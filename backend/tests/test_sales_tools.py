@@ -143,3 +143,56 @@ async def test_sales_performance_returns_vendors():
     assert len(result["vendors"]) == 2
     assert result["vendors"][0]["vendor_name"] == "Juan Pérez"
     assert result["vendors"][0]["total_sales"] == 180000.0
+
+
+# --- get_sales_forecast additional tests ---
+
+@pytest.mark.asyncio
+async def test_sales_forecast_region_escaping():
+    """Region single quote is escaped in forecast SQL query."""
+    mock_rows = []
+    with patch("tools.sales_tools.azure_sql.query_readonly", new_callable=AsyncMock, return_value=mock_rows) as mock_q:
+        await get_sales_forecast("2026-09", "2026-12", region="Norte'Sur")
+    query_arg = mock_q.call_args[0][0]
+    assert "Norte''Sur" in query_arg
+
+
+@pytest.mark.asyncio
+async def test_sales_forecast_empty_result():
+    """get_sales_forecast returns empty periods list when no data."""
+    with patch("tools.sales_tools.azure_sql.query_readonly", new_callable=AsyncMock, return_value=[]):
+        result = await get_sales_forecast("2026-09", "2026-12")
+    assert result["periods"] == []
+    assert "timestamp" in result
+
+
+# --- get_sales_performance additional tests ---
+
+@pytest.mark.asyncio
+async def test_sales_performance_region_escaping():
+    """Region single quote is escaped in performance SQL query."""
+    mock_rows = []
+    with patch("tools.sales_tools.azure_sql.query_readonly", new_callable=AsyncMock, return_value=mock_rows) as mock_q:
+        await get_sales_performance("2026-08", region="Lima'Norte")
+    query_arg = mock_q.call_args[0][0]
+    assert "Lima''Norte" in query_arg
+
+
+@pytest.mark.asyncio
+async def test_sales_performance_with_region():
+    """get_sales_performance passes region filter to SQL."""
+    mock_rows = [{"vendor_code": "V001", "vendor_name": "Ana", "num_orders": 10, "total_sales": 50000.0, "num_customers": 8}]
+    with patch("tools.sales_tools.azure_sql.query_readonly", new_callable=AsyncMock, return_value=mock_rows) as mock_q:
+        result = await get_sales_performance("2026-08", region="LIMA")
+    assert result["region"] == "LIMA"
+    query_arg = mock_q.call_args[0][0]
+    assert "LIMA" in query_arg
+
+
+@pytest.mark.asyncio
+async def test_sales_performance_empty_result():
+    """get_sales_performance returns empty vendors list when no data."""
+    with patch("tools.sales_tools.azure_sql.query_readonly", new_callable=AsyncMock, return_value=[]):
+        result = await get_sales_performance("2026-08")
+    assert result["vendors"] == []
+    assert "timestamp" in result
