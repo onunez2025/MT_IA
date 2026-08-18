@@ -38,7 +38,7 @@ async def get_inventory_by_sales(
         where_parts.append(f"VC_material_codigo = '{safe_mat}'")
     if region:
         safe_region = region.replace("'", "''")
-        where_parts.append(f"VC_zona_ventas = '{safe_region}'")
+        where_parts.append(f"VC_organizacion_venta = '{safe_region}'")
 
     where_clause = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
 
@@ -48,8 +48,8 @@ async def get_inventory_by_sales(
         VC_material_denominacion                 AS description,
         SUM(DE_cantidad)                         AS quantity_delivered,
         COUNT(DISTINCT VC_entrega_numero)        AS num_deliveries,
-        COUNT(DISTINCT VC_zona_ventas)           AS num_regions
-    FROM SD_ENTREGAS
+        COUNT(DISTINCT VC_organizacion_venta)     AS num_regions
+    FROM SAP.SD_ENTREGAS
     {where_clause}
     GROUP BY VC_material_codigo, VC_material_denominacion
     ORDER BY quantity_delivered DESC

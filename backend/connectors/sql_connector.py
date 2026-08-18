@@ -21,7 +21,7 @@ class SQLConnector(BaseConnector):
 
         if db_type == "azure":
             self.connection_string = (
-                f"Driver={{ODBC Driver 17 for SQL Server}};"
+                f"Driver={{ODBC Driver 18 for SQL Server}};"
                 f"Server=tcp:{settings.azure_sql_server},1433;"
                 f"Database={settings.azure_sql_database};"
                 f"UID={settings.azure_sql_user};"
@@ -30,7 +30,7 @@ class SQLConnector(BaseConnector):
             )
         else:  # local
             self.connection_string = (
-                f"Driver={{ODBC Driver 17 for SQL Server}};"
+                f"Driver={{ODBC Driver 18 for SQL Server}};"
                 f"Server={settings.sql_server};"
                 f"Database={settings.sql_database};"
                 f"UID={settings.sql_user};"

@@ -57,7 +57,7 @@ async def get_sales_summary(period: str, region: Optional[str] = None) -> Dict[s
         COUNT(DISTINCT VC_solicitante_codigo)    AS num_customers,
         SUM(DE_neto)                             AS total_sales,
         AVG(DE_neto)                             AS avg_order_value
-    FROM SD_VENTAS
+    FROM SAP.SD_VENTAS
     {where_clause}
     """
 
@@ -123,7 +123,7 @@ async def get_sales_forecast(start_period: str, end_period: str, region: Optiona
         SUM(ImporteSoles)   AS forecast_sales,
         SUM(UtilidadSoles)  AS forecast_profit,
         COUNT(*)            AS num_records
-    FROM WEB_FORECAST_VENTAS_REPORTE_ACTIVIDAD
+    FROM SAP.WEB_FORECAST_VENTAS_REPORTE_ACTIVIDAD
     {where_clause}
     GROUP BY Anio, MesNumero
     ORDER BY Anio, MesNumero
@@ -166,7 +166,7 @@ async def get_sales_performance(period: str, region: Optional[str] = None) -> Di
         COUNT(DISTINCT VC_documento_pago_numero)                AS num_orders,
         SUM(DE_neto)                                            AS total_sales,
         COUNT(DISTINCT VC_solicitante_codigo)                   AS num_customers
-    FROM SD_VENTAS
+    FROM SAP.SD_VENTAS
     {where_clause}
     GROUP BY VC_vendedor_codigo, VC_vendedor_nombre
     ORDER BY total_sales DESC

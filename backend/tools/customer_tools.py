@@ -43,7 +43,7 @@ async def get_customer_insights(customer_id: str) -> Dict[str, Any]:
         MAX(DT_documento_pago_fecha)             AS last_purchase_date,
         AVG(DE_neto)                             AS avg_transaction_value,
         MIN(DT_documento_pago_fecha)             AS first_purchase_date
-    FROM SD_VENTAS
+    FROM SAP.SD_VENTAS
     WHERE VC_solicitante_codigo = '{sql_safe_id}'
     """
     rows = await azure_sql.query_readonly(history_query)
