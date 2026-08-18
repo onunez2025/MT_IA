@@ -85,16 +85,95 @@ async def get_sales_summary(period: str, region: Optional[str] = None) -> Dict[s
 
 
 async def get_sales_targets(vendor_id: Optional[str] = None, year: int = 2026, month: Optional[int] = None) -> Dict[str, Any]:
-    """Get sales targets vs actual for vendors. Placeholder until SIG targets table is confirmed."""
+    """
+    Get sales targets vs actual.
+
+    Sources:
+    - MT.TB_FOLLOWUP_METAS          : daily rolling target by store_id
+    - MT.TB_FOLLOWUP_VENDEDORES     : vendor → store mapping
+    - SAP.SD_VENTAS                 : actual sales
+
+    Logic: MAX(amount) per month = final meta for that month.
+    """
     params_model = SalesTargetParams(vendor_id=vendor_id, year=year, month=month)
     period_str = f"{year}-{month:02d}" if month else str(year)
+    period_ym  = f"{year}{month:02d}" if month else None   # "202608"
+
+    # 1. Resolve store_id for the vendor
+    if vendor_id:
+        safe_vid = vendor_id.replace("'", "''")
+        store_rows = await azure_sql.query_readonly(
+            f"SELECT TOP 1 store_id FROM MT.TB_FOLLOWUP_VENDEDORES WHERE seller_id = '{safe_vid}'"
+        )
+        store_id = store_rows[0].get("store_id") if store_rows else None
+    else:
+        store_id = "SH22"   # only store currently loaded
+
+    # 2. Meta (target) — MAX(amount) per month is the final target for that month
+    target = 0.0
+    if store_id:
+        safe_store = store_id.replace("'", "''")
+        if period_ym:
+            meta_q = f"""
+            SELECT MAX(amount) AS target
+            FROM MT.TB_FOLLOWUP_METAS
+            WHERE store_id = '{safe_store}'
+              AND LEFT(date, 6) = '{period_ym}'
+            """
+        else:
+            meta_q = f"""
+            SELECT SUM(monthly_target) AS target FROM (
+                SELECT LEFT(date, 6) AS ym, MAX(amount) AS monthly_target
+                FROM MT.TB_FOLLOWUP_METAS
+                WHERE store_id = '{safe_store}'
+                  AND LEFT(date, 4) = '{year}'
+                GROUP BY LEFT(date, 6)
+            ) t
+            """
+        meta_rows = await azure_sql.query_readonly(meta_q)
+        target = float(meta_rows[0].get("target") or 0) if meta_rows else 0.0
+
+    # 3. Actual sales from SAP.SD_VENTAS
+    period_where = f"IN_anio = {year}" + (f" AND IN_mes = {month}" if month else "")
+
+    if vendor_id:
+        safe_vid = vendor_id.replace("'", "''")
+        vendor_filter = f"AND VC_vendedor_codigo = '{safe_vid}'"
+    elif store_id:
+        safe_store = store_id.replace("'", "''")
+        v_rows = await azure_sql.query_readonly(
+            f"SELECT seller_id FROM MT.TB_FOLLOWUP_VENDEDORES "
+            f"WHERE store_id = '{safe_store}' AND seller_id IS NOT NULL"
+        )
+        if v_rows:
+            ids = "','".join(r["seller_id"] for r in v_rows if r.get("seller_id"))
+            vendor_filter = f"AND VC_vendedor_codigo IN ('{ids}')"
+        else:
+            vendor_filter = ""
+    else:
+        vendor_filter = ""
+
+    actual_rows = await azure_sql.query_readonly(f"""
+        SELECT SUM(DE_neto) AS actual_sales
+        FROM SAP.SD_VENTAS
+        WHERE {period_where} {vendor_filter}
+    """)
+    actual = float(actual_rows[0].get("actual_sales") or 0) if actual_rows else 0.0
+
+    pct = round(actual / target * 100, 1) if target > 0 else 0.0
+
+    note = ""
+    if not store_id:
+        note = "Vendedor no encontrado en tabla de metas (TB_FOLLOWUP_VENDEDORES)"
+
     return {
         "vendor_id": vendor_id or "ALL",
+        "store_id": store_id or "N/A",
         "period": period_str,
-        "target": 0,
-        "actual": 0,
-        "pct_achievement": 0.0,
-        "note": "Targets table (SIG) pending connection verification",
+        "target": round(target, 2),
+        "actual": round(actual, 2),
+        "pct_achievement": pct,
+        "note": note,
         "timestamp": datetime.utcnow().isoformat(),
     }
 

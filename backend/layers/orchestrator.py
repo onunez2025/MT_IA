@@ -39,7 +39,7 @@ TOOL_KEYWORDS: List[Dict[str, Any]] = [
     {
         "tool": "get_sales_targets",
         "keywords": ["meta", "metas", "target", "objetivo", "presupuesto", "cuota"],
-        "default_params": {"year": 2026},
+        "default_params": {"year": 2026, "month": 8},
     },
     {
         "tool": "get_sales_performance",
@@ -86,12 +86,18 @@ def _format_response(tool_name: str, result: Dict[str, Any]) -> str:
             f"{result.get('num_customers', 0)} clientes."
         )
     elif tool_name == "get_sales_targets":
-        return (
-            f"Meta de ventas para {result.get('vendor_id', 'todos')}: "
-            f"objetivo {result.get('target', 0):,}, actual {result.get('actual', 0):,} "
-            f"({result.get('pct_achievement', 0):.1f}% de cumplimiento). "
-            f"{result.get('note', '')}"
+        target = result.get("target", 0)
+        actual = result.get("actual", 0)
+        pct    = result.get("pct_achievement", 0)
+        note   = result.get("note", "")
+        store  = result.get("store_id", "")
+        vendor = result.get("vendor_id", "todos")
+        base = (
+            f"Meta {result.get('period')} — Tienda {store} "
+            f"({'Vendedor: ' + vendor if vendor != 'ALL' else 'todos los vendedores'}): "
+            f"Meta S/ {target:,.2f} | Real S/ {actual:,.2f} | Cumplimiento {pct:.1f}%."
         )
+        return base + (f" {note}" if note else "")
     elif tool_name == "get_sales_forecast":
         periods = result.get("periods", [])
         if not periods:
