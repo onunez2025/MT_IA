@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 
 class ToolParameter(BaseModel):
     name: str
@@ -18,7 +18,7 @@ class QueryRequest(BaseModel):
     conversation_id: Optional[str] = None
 
 class QueryResponse(BaseModel):
-    status: str  # "success", "error", "blocked"
+    status: Literal["success", "error", "blocked"]
     response: str
     sources: List[Dict[str, Any]]
     tokens_used: Optional[int] = None

@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Literal
 
 class AuditLog(BaseModel):
     timestamp: datetime
@@ -8,7 +8,7 @@ class AuditLog(BaseModel):
     user_roles: List[str]
     tool_name: str
     parameters: dict
-    status: str  # "SUCCESS", "BLOCKED", "ERROR"
+    status: Literal["SUCCESS", "BLOCKED", "ERROR"]
     result_row_count: int
     tokens_used: Optional[int]
     response_time_ms: float
