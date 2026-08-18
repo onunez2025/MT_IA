@@ -201,3 +201,87 @@ class TestEntraConnector:
 
         roles = await connector.get_user_roles("test_user")
         assert roles == ["Guest"]
+
+
+# --- Task 4: SQL Connector Tests ---
+from connectors.sql_connector import SQLConnector
+
+
+@pytest.mark.asyncio
+async def test_sql_readonly_blocks_insert():
+    """Verify INSERT statements are blocked"""
+    sql = SQLConnector(db_type="azure")
+    with pytest.raises(PermissionError):
+        await sql.query_readonly("INSERT INTO sales VALUES (1, 2, 3)")
+
+
+@pytest.mark.asyncio
+async def test_sql_readonly_blocks_delete():
+    """Verify DELETE statements are blocked"""
+    sql = SQLConnector(db_type="azure")
+    with pytest.raises(PermissionError):
+        await sql.query_readonly("DELETE FROM sales WHERE id=1")
+
+
+@pytest.mark.asyncio
+async def test_sql_readonly_blocks_update():
+    """Verify UPDATE statements are blocked"""
+    sql = SQLConnector(db_type="azure")
+    with pytest.raises(PermissionError):
+        await sql.query_readonly("UPDATE sales SET amount=0")
+
+
+@pytest.mark.asyncio
+async def test_sql_readonly_blocks_drop():
+    """Verify DROP statements are blocked"""
+    sql = SQLConnector(db_type="azure")
+    with pytest.raises(PermissionError):
+        await sql.query_readonly("DROP TABLE sales")
+
+
+@pytest.mark.asyncio
+async def test_sql_readonly_allows_select():
+    """Verify SELECT passes readonly guard (mock the connection)"""
+    sql = SQLConnector(db_type="azure")
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("col1",), ("col2",)]
+    mock_cursor.fetchall.return_value = [(1, "test")]
+    mock_conn.cursor.return_value = mock_cursor
+    with patch("connectors.sql_connector.pyodbc.connect", return_value=mock_conn):
+        result = await sql.query_readonly("SELECT TOP 1 * FROM SD_VENTAS")
+    assert result == [{"col1": 1, "col2": "test"}]
+
+
+@pytest.mark.asyncio
+async def test_sql_validate_connection_success():
+    """validate_connection returns True when DB responds"""
+    sql = SQLConnector(db_type="azure")
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_conn.cursor.return_value = mock_cursor
+    with patch("connectors.sql_connector.pyodbc.connect", return_value=mock_conn):
+        result = await sql.validate_connection()
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_sql_validate_connection_failure():
+    """validate_connection returns False on exception"""
+    sql = SQLConnector(db_type="azure")
+    with patch("connectors.sql_connector.pyodbc.connect", side_effect=Exception("conn refused")):
+        result = await sql.validate_connection()
+    assert result is False
+
+
+def test_sql_connector_azure_connection_string():
+    """Azure connector builds correct connection string"""
+    sql = SQLConnector(db_type="azure")
+    assert "1433" in sql.connection_string
+    assert "Encrypt=yes" in sql.connection_string
+
+
+def test_sql_connector_local_connection_string():
+    """Local connector builds connection string without encryption"""
+    sql = SQLConnector(db_type="local")
+    assert "Encrypt" not in sql.connection_string
