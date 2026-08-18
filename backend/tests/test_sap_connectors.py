@@ -117,3 +117,39 @@ class TestC4CConnector:
         # Verify filter param was passed
         call_kwargs = mock_get.call_args[1]
         assert "CLI-001" in str(call_kwargs.get("params", {}))
+
+    @pytest.mark.asyncio
+    async def test_get_sales_orders_escapes_single_quotes(self):
+        """get_sales_orders escapes single quotes in customer_id (OData injection prevention)"""
+        c4c = C4CConnector()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"d": {"results": []}}
+        mock_resp.raise_for_status = MagicMock()
+        with patch("connectors.sap_connector.requests.get", return_value=mock_resp) as mock_get:
+            await c4c.get_sales_orders("O'Brien")
+        call_kwargs = mock_get.call_args[1]
+        # Single quote must be escaped as ''
+        assert "O''Brien" in str(call_kwargs.get("params", {}))
+
+    @pytest.mark.asyncio
+    async def test_get_material_info(self):
+        """ERPConnector.get_material_info returns d dict"""
+        erp = ERPConnector()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"d": {"Material": "MAT-001", "Description": "Widget"}}
+        mock_resp.raise_for_status = MagicMock()
+        with patch("connectors.sap_connector.requests.get", return_value=mock_resp):
+            result = await erp.get_material_info("MAT-001")
+        assert result["Material"] == "MAT-001"
+
+
+class TestQueryReadonlyError:
+    @pytest.mark.asyncio
+    async def test_query_readonly_raises_on_http_error(self):
+        """query_readonly raises on HTTP error"""
+        sap = SAPConnector("test", "https://example.com", "u", "p")
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.side_effect = Exception("HTTP 500")
+        with patch("connectors.sap_connector.requests.get", return_value=mock_resp):
+            with pytest.raises(Exception):
+                await sap.query_readonly("/SomeEndpoint")

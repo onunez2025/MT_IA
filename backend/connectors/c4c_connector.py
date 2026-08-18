@@ -32,9 +32,11 @@ class C4CConnector(SAPConnector):
 
     async def get_sales_orders(self, customer_id: str) -> List[Dict]:
         """Get sales orders for a customer"""
+        # Escape single quotes per OData spec
+        safe_id = customer_id.replace("'", "''")
         params = {
             "$format": "json",
-            "$filter": f"CustomerID eq '{customer_id}'"
+            "$filter": f"CustomerID eq '{safe_id}'"
         }
         response = await self.query_readonly("/c4c_odata_api/SalesOrderSet", params)
         return response.get("d", {}).get("results", [])
@@ -54,9 +56,10 @@ class ERPConnector(SAPConnector):
 
     async def get_material_info(self, material_code: str) -> Dict:
         """Get material/product info from ERP"""
+        safe_code = material_code.replace("'", "''")
         params = {
             "$format": "json",
-            "$filter": f"Material eq '{material_code}'"
+            "$filter": f"Material eq '{safe_code}'"
         }
         response = await self.query_readonly("/API_MATERIAL_DOCUMENT_SRV/A_MaterialDocumentHeader", params)
         return response.get("d", {})
