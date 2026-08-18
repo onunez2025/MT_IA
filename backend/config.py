@@ -1,40 +1,39 @@
 # backend/config.py
-import os
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    """Application configuration from environment"""
+    """Application configuration from environment variables"""
 
     # Environment
-    environment: str = os.getenv("ENVIRONMENT", "development")
-    debug: bool = os.getenv("DEBUG", "True").lower() == "true"
-    log_level: str = os.getenv("LOG_LEVEL", "INFO")
+    environment: str = "development"
+    debug: bool = True
+    log_level: str = "INFO"
 
-    # Entera ID
-    entra_tenant_id: str = os.getenv("ENTRA_TENANT_ID", "")
-    entra_client_id: str = os.getenv("ENTRA_CLIENT_ID", "")
-    entra_client_secret: str = os.getenv("ENTRA_CLIENT_SECRET", "")
+    # Entra ID (Microsoft Azure AD)
+    entra_tenant_id: str = ""
+    entra_client_id: str = ""
+    entra_client_secret: str = ""
 
     # SAP
-    sap_host: str = os.getenv("SAP_HOST", "")
-    sap_user: str = os.getenv("SAP_USER", "")
-    sap_password: str = os.getenv("SAP_PASSWORD", "")
+    sap_host: str = ""
+    sap_user: str = ""
+    sap_password: str = ""
 
     # SQL Local (SIG)
-    sql_server: str = os.getenv("SQL_SERVER", "")
-    sql_database: str = os.getenv("SQL_DATABASE", "SIG")
-    sql_user: str = os.getenv("SQL_USER", "")
-    sql_password: str = os.getenv("SQL_PASSWORD", "")
+    sql_server: str = ""
+    sql_database: str = "SIG"
+    sql_user: str = ""
+    sql_password: str = ""
 
     # Azure SQL
-    azure_sql_server: str = os.getenv("AZURE_SQL_SERVER", "")
-    azure_sql_database: str = os.getenv("AZURE_SQL_DATABASE", "")
-    azure_sql_user: str = os.getenv("AZURE_SQL_USER", "")
-    azure_sql_password: str = os.getenv("AZURE_SQL_PASSWORD", "")
+    azure_sql_server: str = ""
+    azure_sql_database: str = ""
+    azure_sql_user: str = ""
+    azure_sql_password: str = ""
 
-    # Deepseek
-    deepseek_api_key: str = os.getenv("DEEPSEEK_API_KEY", "")
+    # Deepseek API
+    deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com/v1"
 
     class Config:
