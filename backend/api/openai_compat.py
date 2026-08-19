@@ -166,7 +166,7 @@ async def chat_completions(
 
     # Resolver rol desde el token
     role = _resolve_role(authorization)
-    user = User(user_id="openwebui-user", roles=[role])
+    user = User(user_id="openwebui-user", email="openwebui@mtindustrial.com", roles=[role])
 
     # Extraer la pregunta del usuario (último mensaje con role="user")
     user_messages = [m for m in request.messages if m.role == "user"]
