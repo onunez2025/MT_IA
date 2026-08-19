@@ -7,6 +7,7 @@ from typing import Dict, Any, Optional, List
 
 from models.query import QueryResponse
 from models.user import User
+from layers.llm_router import llm_select_tool
 from tools.sales_tools import (
     get_sales_summary,
     get_sales_targets,
@@ -493,8 +494,13 @@ class Orchestrator:
                 sources=[],
             )
 
-        # 2. Select tool
-        selected = _select_tool(clean_question)
+        # 2. Select tool — LLM primero, keywords como fallback
+        routing_method = "llm"
+        selected = await llm_select_tool(clean_question)
+        if selected is None:
+            routing_method = "keyword"
+            selected = _select_tool(clean_question)
+
         if not selected:
             log_audit_entry(
                 user_id=user.user_id,
@@ -553,8 +559,12 @@ class Orchestrator:
 
         # 4. Execute tool
         try:
-            # Extraer meta-params con prefijo _ (no se pasan al tool)
-            top_n_override = tool_params.pop("_top_n", None)
+            # top_n: get_sales_performance no lo acepta como param (SQL hardcodeado TOP 10)
+            # lo sacamos de params y lo inyectamos en result para _format_response
+            if tool_name == "get_sales_performance":
+                top_n_override = tool_params.pop("top_n", tool_params.pop("_top_n", None))
+            else:
+                top_n_override = tool_params.pop("_top_n", None)
 
             # Look up from module globals so patches in tests work correctly
             import sys as _sys

@@ -11,6 +11,8 @@ sqlalchemy==2.0.23
 # APIs
 requests==2.31.0
 msgraph-core==0.2.2
+openai>=1.30.0          # DeepSeek API (OpenAI-compatible)
+openpyxl>=3.1.0         # Excel report generation
 
 # Authentication
 azure-identity==1.14.0
