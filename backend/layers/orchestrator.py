@@ -15,6 +15,15 @@ from tools.sales_tools import (
 )
 from tools.customer_tools import get_customer_insights
 from tools.inventory_tools import get_inventory_by_sales
+from tools.analytics_tools import (
+    get_gap_to_target,
+    get_inactive_customers,
+    get_sales_by_channel,
+    get_monthly_trend,
+    get_new_customers,
+    get_top_margin_products,
+)
+from tools.report_tools import generate_forecast_report
 from guards.rbac import validate_rbac
 from guards.audit import log_audit_entry
 from guards.sanitization import sanitize_user_input, validate_tool_name
@@ -23,16 +32,71 @@ logger = logging.getLogger(__name__)
 
 # Maps tool name -> callable
 TOOL_REGISTRY: Dict[str, Any] = {
-    "get_sales_summary": get_sales_summary,
-    "get_sales_targets": get_sales_targets,
-    "get_sales_forecast": get_sales_forecast,
-    "get_customer_insights": get_customer_insights,
-    "get_sales_performance": get_sales_performance,
+    # Fase 0 originales
+    "get_sales_summary":      get_sales_summary,
+    "get_sales_targets":      get_sales_targets,
+    "get_sales_forecast":     get_sales_forecast,
+    "get_customer_insights":  get_customer_insights,
+    "get_sales_performance":  get_sales_performance,
     "get_inventory_by_sales": get_inventory_by_sales,
+    # Fase 0+ nuevas
+    "get_gap_to_target":        get_gap_to_target,
+    "get_inactive_customers":   get_inactive_customers,
+    "get_sales_by_channel":     get_sales_by_channel,
+    "get_monthly_trend":        get_monthly_trend,
+    "get_new_customers":        get_new_customers,
+    "get_top_margin_products":  get_top_margin_products,
+    "generate_forecast_report": generate_forecast_report,
 }
 
 # Keyword heuristics for tool selection (Fase 0: no LLM routing)
+# Order matters: more specific tools first to avoid shadowing by generic ones.
 TOOL_KEYWORDS: List[Dict[str, Any]] = [
+    # ── Fase 0+ nuevas (más específicas → van primero) ──────────────────────
+    {
+        "tool": "generate_forecast_report",
+        "keywords": ["armar archivo", "generar archivo", "genera el excel", "arma el excel",
+                     "reporte excel", "excel forecast", "descarga", "generar reporte"],
+        "default_params": {"year": 2026, "month": 9},
+    },
+    {
+        "tool": "get_gap_to_target",
+        "keywords": ["falta", "cuánto falta", "cuanto falta", "brecha", "gap",
+                     "le falta", "me falta", "diferencia con la meta",
+                     "alcanzar la meta", "llegar a la meta"],
+        "default_params": {},
+    },
+    {
+        "tool": "get_inactive_customers",
+        "keywords": ["inactivo", "inactivos", "sin compra", "no compran",
+                     "clientes que no han comprado", "reactivar", "reactivación"],
+        "default_params": {"days": 60},
+    },
+    {
+        "tool": "get_new_customers",
+        "keywords": ["nuevos clientes", "clientes nuevos", "clientes que compraron por primera vez",
+                     "primera compra", "primer pedido", "captación"],
+        "default_params": {"period": "2026-08"},
+    },
+    {
+        "tool": "get_top_margin_products",
+        "keywords": ["margen", "mejor margen", "productos rentables", "rentabilidad",
+                     "utilidad por producto", "producto más rentable"],
+        "default_params": {"top_n": 10},
+    },
+    {
+        "tool": "get_sales_by_channel",
+        "keywords": ["canal", "canales", "por canal", "ecommerce", "institucional",
+                     "distribución por canal", "ventas por canal"],
+        "default_params": {"period": "2026-08"},
+    },
+    {
+        "tool": "get_monthly_trend",
+        "keywords": ["tendencia", "trend", "evolución mensual", "cómo ha ido",
+                     "como ha ido", "últimos meses", "ultimos meses", "histórico mensual"],
+        "default_params": {"months": 6},
+    },
+    # ── Fase 0 originales ───────────────────────────────────────────────────
     {
         "tool": "get_sales_forecast",
         "keywords": ["forecast", "pronóstico", "pronostico", "proyección", "proyeccion"],
@@ -45,12 +109,12 @@ TOOL_KEYWORDS: List[Dict[str, Any]] = [
     },
     {
         "tool": "get_sales_performance",
-        "keywords": ["rendimiento", "performance", "ranking", "vendedor", "top", "mejor"],
+        "keywords": ["rendimiento", "performance", "ranking", "top vendedor", "mejor vendedor"],
         "default_params": {"period": "2026-08"},
     },
     {
         "tool": "get_customer_insights",
-        "keywords": ["cliente", "customer", "historial", "compras"],
+        "keywords": ["cliente", "customer", "historial", "compras del cliente"],
         "default_params": {"customer_id": "unknown"},
     },
     {
@@ -60,7 +124,8 @@ TOOL_KEYWORDS: List[Dict[str, Any]] = [
     },
     {
         "tool": "get_sales_summary",
-        "keywords": ["venta", "ventas", "resumen", "total", "ingreso", "revenue", "cuánto", "cuanto"],
+        "keywords": ["venta", "ventas", "resumen", "total", "ingreso", "revenue",
+                     "cuánto", "cuanto", "top", "vendedor"],
         "default_params": {"period": "2026-08"},
     },
 ]
@@ -151,6 +216,54 @@ def _select_tool(question: str) -> Optional[Dict[str, Any]]:
             if code_m:
                 params["customer_id"] = code_m.group(1)
 
+        elif tool == "get_gap_to_target":
+            period = _extract_period(question)
+            if period and "-" in period:
+                yr, mo = period.split("-")
+                params["year"]  = int(yr)
+                params["month"] = int(mo)
+            elif period:
+                params["year"] = int(period)
+
+        elif tool in ("get_inactive_customers",):
+            # Extract day threshold: "60 días", "90 días"
+            day_m = re.search(r'\b(\d{2,3})\s*d[ií]as?\b', q)
+            if day_m:
+                params["days"] = int(day_m.group(1))
+
+        elif tool in ("get_sales_by_channel",):
+            period = _extract_period(question)
+            if period:
+                params["period"] = period
+
+        elif tool == "get_monthly_trend":
+            # "últimos 3 meses" / "últimos 12 meses"
+            m_m = re.search(r'\b(\d{1,2})\s*meses?\b', q)
+            if m_m:
+                params["months"] = int(m_m.group(1))
+
+        elif tool in ("get_new_customers",):
+            period = _extract_period(question)
+            if period:
+                params["period"] = period
+
+        elif tool == "get_top_margin_products":
+            period = _extract_period(question)
+            if period:
+                params["period"] = period
+            top_m = re.search(r'\btop\s*(\d{1,2})\b', q)
+            if top_m:
+                params["top_n"] = int(top_m.group(1))
+
+        elif tool == "generate_forecast_report":
+            period = _extract_period(question)
+            if period and "-" in period:
+                yr, mo = period.split("-")
+                params["year"]  = int(yr)
+                params["month"] = int(mo)
+            elif period:
+                params["year"] = int(period)
+
         return {"tool": tool, "params": params}
 
     return None
@@ -212,6 +325,89 @@ def _format_response(tool_name: str, result: Dict[str, Any]) -> str:
             f"Se encontraron {len(materials)} materiales. "
             f"El más vendido: {materials[0].get('description')} "
             f"({materials[0].get('quantity_delivered', 0):,.0f} unidades entregadas)."
+        )
+    # ── Fase 0+ nuevas ──────────────────────────────────────────────────────
+    elif tool_name == "get_gap_to_target":
+        meta   = result.get("meta", 0)
+        actual = result.get("actual", 0)
+        gap    = result.get("gap", 0)
+        pct    = result.get("pct_achievement", 0)
+        d_left = result.get("days_remaining", 0)
+        needed = result.get("daily_needed_to_close", 0)
+        on_track = result.get("on_track", False)
+        icon   = "✅" if on_track else "⚠️"
+        return (
+            f"{icon} Brecha a la meta — {result.get('period')} (Tienda {result.get('store_id')}): "
+            f"Meta S/ {meta:,.2f} | Real S/ {actual:,.2f} | "
+            f"Cumplimiento {pct:.1f}% | Falta S/ {gap:,.2f}. "
+            f"Quedan {d_left} días. Ritmo diario necesario: S/ {needed:,.2f}/día."
+        )
+    elif tool_name == "get_inactive_customers":
+        total = result.get("total_inactive", 0)
+        days  = result.get("days_threshold", 60)
+        custs = result.get("customers", [])
+        top3  = ", ".join(c.get("nombre", "") for c in custs[:3])
+        return (
+            f"Clientes inactivos (sin compra en {days}+ días): {total} clientes. "
+            f"Top 3 por valor histórico: {top3}."
+        )
+    elif tool_name == "get_sales_by_channel":
+        canales = result.get("canales", [])
+        total   = result.get("total_ventas", 0)
+        if not canales:
+            return "No se encontraron ventas por canal para el período indicado."
+        top = canales[0]
+        lines = [
+            f"Ventas por canal — {result.get('period')} (Total: S/ {total:,.2f}):"
+        ]
+        for c in canales:
+            lines.append(
+                f"  • {c['canal']}: S/ {c['ventas']:,.2f} ({c['participacion_pct']}%)"
+            )
+        return "\n".join(lines)
+    elif tool_name == "get_monthly_trend":
+        periodos = result.get("periodos", [])
+        if not periodos:
+            return "No se encontraron datos de tendencia para el período solicitado."
+        tendencia = result.get("tendencia", "")
+        crecimiento = result.get("crecimiento_pct", 0)
+        prom = result.get("promedio_mensual", 0)
+        last = periodos[-1]
+        return (
+            f"Tendencia {result.get('months_analyzed')} meses: {tendencia} "
+            f"({crecimiento:+.1f}% vs primer mes). "
+            f"Promedio mensual S/ {prom:,.2f}. "
+            f"Último mes ({last['periodo']}): S/ {last['ventas']:,.2f} "
+            f"(MoM: {last['mom_pct']:+.1f}%)" if last.get("mom_pct") is not None else ""
+        )
+    elif tool_name == "get_new_customers":
+        total = result.get("total_new_customers", 0)
+        custs = result.get("customers", [])
+        top3  = ", ".join(c.get("nombre", "") for c in custs[:3])
+        return (
+            f"Clientes nuevos en {result.get('period')}: {total}. "
+            + (f"Principales: {top3}." if top3 else "")
+        )
+    elif tool_name == "get_top_margin_products":
+        prods = result.get("products", [])
+        if not prods:
+            return "No se encontraron productos con datos de margen para el período."
+        top = prods[0]
+        return (
+            f"Top {len(prods)} productos por margen — {result.get('period')}: "
+            f"#1 {top['nombre']} con {top['margen_pct']}% de margen "
+            f"(ventas S/ {top['ventas']:,.2f})."
+        )
+    elif tool_name == "generate_forecast_report":
+        if "error" in result:
+            return f"Error generando reporte: {result['error']}"
+        return (
+            f"✅ Reporte generado: {result.get('filename')} — "
+            f"Forecast {result.get('target_month')} {result.get('period', '')[:4]}: "
+            f"Conservador S/ {result.get('forecast_conservador', 0):,.2f} | "
+            f"Base S/ {result.get('forecast_base', 0):,.2f} | "
+            f"Optimista S/ {result.get('forecast_optimista', 0):,.2f}. "
+            f"Guardado en: {result.get('file_path')}"
         )
     return str(result)
 

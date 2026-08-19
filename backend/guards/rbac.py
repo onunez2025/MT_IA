@@ -5,40 +5,36 @@ from typing import List, Dict
 logger = logging.getLogger(__name__)
 
 # RBAC permissions matrix — maps role → allowed tools
+_VENDEDOR_TOOLS = [
+    "get_sales_summary",
+    "get_sales_targets",
+    "get_customer_insights",
+    # Nuevas Fase 0+ — acceso para Vendedor
+    "get_gap_to_target",
+    "get_inactive_customers",
+    "get_new_customers",
+]
+
+_JEFE_TOOLS = _VENDEDOR_TOOLS + [
+    "get_sales_forecast",
+    "get_sales_performance",
+    "get_inventory_by_sales",
+    # Nuevas Fase 0+ — acceso solo Jefe/Gerente/Admin
+    "get_sales_by_channel",
+    "get_monthly_trend",
+    "get_top_margin_products",
+    "generate_forecast_report",
+]
+
 ROLE_PERMISSIONS: Dict[str, List[str]] = {
-    "Vendedor": [
-        "get_sales_summary",
-        "get_sales_targets",
-        "get_customer_insights",
-    ],
-    "Jefe_Ventas": [
-        "get_sales_summary",
-        "get_sales_targets",
-        "get_sales_forecast",
-        "get_customer_insights",
-        "get_sales_performance",
-        "get_inventory_by_sales",
-    ],
-    "Gerente": [
-        "get_sales_summary",
-        "get_sales_targets",
-        "get_sales_forecast",
-        "get_customer_insights",
-        "get_sales_performance",
-        "get_inventory_by_sales",
-    ],
-    "Admin": [
-        "get_sales_summary",
-        "get_sales_targets",
-        "get_sales_forecast",
-        "get_customer_insights",
-        "get_sales_performance",
-        "get_inventory_by_sales",
-    ],
-    "Guest": [],
+    "Vendedor":    _VENDEDOR_TOOLS,
+    "Jefe_Ventas": _JEFE_TOOLS,
+    "Gerente":     _JEFE_TOOLS,
+    "Admin":       _JEFE_TOOLS,
+    "Guest":       [],
 }
 
-ALL_TOOLS = set(ROLE_PERMISSIONS["Jefe_Ventas"])
+ALL_TOOLS = set(_JEFE_TOOLS)
 
 
 def validate_rbac(user_roles: List[str], tool_name: str) -> bool:

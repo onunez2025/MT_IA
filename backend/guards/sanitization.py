@@ -5,14 +5,23 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Tools allowed in Fase 0
+# Tools allowed — Fase 0 originales + 7 nuevas Fase 0+
 VALID_TOOLS = {
+    # Fase 0 originales
     "get_sales_summary",
     "get_sales_targets",
     "get_sales_forecast",
     "get_customer_insights",
     "get_sales_performance",
     "get_inventory_by_sales",
+    # Fase 0+ nuevas
+    "get_gap_to_target",
+    "get_inactive_customers",
+    "get_sales_by_channel",
+    "get_monthly_trend",
+    "get_new_customers",
+    "get_top_margin_products",
+    "generate_forecast_report",
 }
 
 # Patterns that should never appear in user input
