@@ -28,7 +28,21 @@ class SQLConnector(BaseConnector):
                 f"PWD={settings.azure_sql_password};"
                 f"Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
             )
-        else:  # local
+        elif db_type == "punto_venta":
+            # PUNTO_VENTA: usa PV_SQL_* si están configurados,
+            # si no, cae al mismo server/user que SQL local.
+            server = settings.pv_sql_server or settings.sql_server
+            user   = settings.pv_sql_user   or settings.sql_user
+            pwd    = settings.pv_sql_password or settings.sql_password
+            self.connection_string = (
+                f"Driver={{ODBC Driver 18 for SQL Server}};"
+                f"Server={server};"
+                f"Database={settings.pv_sql_database};"
+                f"UID={user};"
+                f"PWD={pwd};"
+                f"TrustServerCertificate=yes;Connection Timeout=5;"
+            )
+        else:  # local (SIG)
             self.connection_string = (
                 f"Driver={{ODBC Driver 18 for SQL Server}};"
                 f"Server={settings.sql_server};"
@@ -81,5 +95,6 @@ class SQLConnector(BaseConnector):
             raise
 
 # Singletons for easy access
-azure_sql = SQLConnector(db_type="azure")
-local_sql = SQLConnector(db_type="local")
+azure_sql       = SQLConnector(db_type="azure")
+local_sql       = SQLConnector(db_type="local")
+punto_venta_sql = SQLConnector(db_type="punto_venta")

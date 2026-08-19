@@ -9,6 +9,7 @@ from datetime import datetime, date
 
 from connectors.sql_connector import azure_sql
 from tools.utils import query_cache
+from tools.material_utils import build_material_exclusion_clause
 
 logger = logging.getLogger(__name__)
 
@@ -411,10 +412,15 @@ async def get_product_sales_ranking(
         safe_cat = category.replace("'", "''")
         where_parts.append(f"GrupoMaterialDirectorio = '{safe_cat}'")
 
+    # Excluir materiales de tipo servicio si PUNTO_VENTA está disponible
+    excl_clause = await build_material_exclusion_clause(material_col="MaterialCodigo")
+    if excl_clause:
+        where_parts.append(excl_clause.lstrip("AND "))
+
     where_clause = "WHERE " + " AND ".join(where_parts)
 
-    # Para menos vendido: sin filtro mínimo de documentos para capturar hasta productos
-    # que solo se vendieron una vez.
+    # Para menos vendido: sin filtro mínimo de documentos para capturar
+    # productos que solo se vendieron una vez en el período.
     rows = await azure_sql.query_readonly(f"""
         SELECT TOP {top_n}
             MaterialCodigo                          AS codigo,
@@ -484,6 +490,11 @@ async def get_top_margin_products(period: Optional[str] = None,
     if category:
         safe_cat = category.replace("'", "''")
         where_parts.append(f"GrupoMaterialDirectorio = '{safe_cat}'")
+
+    # Excluir servicios si PUNTO_VENTA disponible
+    excl_clause = await build_material_exclusion_clause(material_col="MaterialCodigo")
+    if excl_clause:
+        where_parts.append(excl_clause.lstrip("AND "))
 
     where_clause = "WHERE " + " AND ".join(where_parts)
 

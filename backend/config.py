@@ -26,6 +26,14 @@ class Settings(BaseSettings):
     sql_user: str = ""
     sql_password: str = ""
 
+    # SQL Local — PUNTO_VENTA (material master / maestro de materiales)
+    # En producción: apuntar a la réplica Azure de PUNTO_VENTA si existe,
+    # o dejar vacío (las queries funcionan sin filtro de tipo de material).
+    pv_sql_server: str = ""          # default: mismo server que sql_server
+    pv_sql_database: str = "PUNTO_VENTA"
+    pv_sql_user: str = ""            # default: mismo user que sql_user
+    pv_sql_password: str = ""        # default: mismo pass que sql_password
+
     # Azure SQL
     azure_sql_server: str = ""
     azure_sql_database: str = ""
