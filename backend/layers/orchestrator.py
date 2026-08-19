@@ -313,13 +313,24 @@ def _format_response(tool_name: str, result: Dict[str, Any]) -> str:
         return base + (f" {note}" if note else "")
     elif tool_name == "get_sales_forecast":
         periods = result.get("periods", [])
+        start   = result.get("start_period", "")
+        end     = result.get("end_period", "")
+
         if not periods:
-            return "No se encontraron datos de forecast para el período solicitado."
+            return (
+                f"No hay datos registrados para el período {start} a {end}.\n\n"
+                "📌 Nota: el sistema muestra ventas reales históricas, no proyecciones automáticas "
+                "de meses futuros. Para meses sin datos puedes pedir:\n"
+                "• 'tendencia de ventas últimos 6 meses' — ver la evolución histórica\n"
+                "• 'genera el reporte forecast' — genera una proyección en Excel basada en tendencia"
+            )
+
         total = sum(p.get("forecast_sales", 0) for p in periods)
-        return (
-            f"Forecast de ventas ({result.get('start_period')} a {result.get('end_period')}): "
-            f"proyección total S/ {total:,.2f} en {len(periods)} meses."
-        )
+        lines = [f"Ventas registradas {start} → {end} ({len(periods)} meses):"]
+        for p in periods:
+            lines.append(f"  • {p['period']}: S/ {p.get('forecast_sales', 0):,.2f}")
+        lines.append(f"  Total: S/ {total:,.2f}")
+        return "\n".join(lines)
     elif tool_name == "get_sales_performance":
         vendors = result.get("vendors", [])
         if not vendors:

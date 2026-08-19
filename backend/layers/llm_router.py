@@ -73,10 +73,18 @@ TOOL_CATALOGUE = [
     },
     {
         "name": "get_sales_forecast",
-        "cuándo usarlo": "El usuario pregunta por el forecast, proyección o pronóstico de ventas futuras.",
+        "cuándo usarlo": "El usuario quiere ver el detalle mes a mes de ventas históricas en un rango de períodos ya transcurridos (ej: enero a julio 2026). NO usar para meses futuros que aún no han ocurrido.",
         "params": {
-            "start_period": "YYYY-MM inicio del rango.",
-            "end_period":   "YYYY-MM fin del rango.",
+            "start_period": "YYYY-MM inicio del rango (debe ser un mes que ya pasó).",
+            "end_period":   "YYYY-MM fin del rango (debe ser un mes que ya pasó).",
+        },
+    },
+    {
+        "name": "generate_forecast_report",
+        "cuándo usarlo": "El usuario quiere una proyección o pronóstico para meses FUTUROS, o pide generar un reporte Excel de forecast. Usar cuando pregunten por septiembre, octubre, noviembre, diciembre 2026 en adelante.",
+        "params": {
+            "year":  "año del reporte (entero).",
+            "month": "mes objetivo del reporte (entero).",
         },
     },
     {
@@ -126,14 +134,6 @@ TOOL_CATALOGUE = [
         "name": "get_inventory_by_sales",
         "cuándo usarlo": "El usuario pregunta por inventario, stock, rotación de materiales o productos más vendidos.",
         "params": {},
-    },
-    {
-        "name": "generate_forecast_report",
-        "cuándo usarlo": "El usuario pide generar o descargar un reporte Excel de forecast.",
-        "params": {
-            "year":  "año del reporte (entero).",
-            "month": "mes del reporte (entero).",
-        },
     },
 ]
 
