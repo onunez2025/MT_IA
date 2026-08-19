@@ -111,7 +111,12 @@ TOOL_KEYWORDS: List[Dict[str, Any]] = [
     },
     {
         "tool": "get_sales_performance",
-        "keywords": ["rendimiento", "performance", "ranking", "top vendedor", "mejor vendedor"],
+        "keywords": ["rendimiento", "performance", "ranking",
+                     "top vendedor", "mejor vendedor",
+                     "mejores vendedores", "top vendedores",
+                     "ranking de vendedores", "vendedores del mes",
+                     "quienes vendieron mas", "quién vendió más",
+                     "quien vendio mas"],
         "default_params": {"period": "2026-08"},
     },
     {
@@ -194,6 +199,11 @@ def _select_tool(question: str) -> Optional[Dict[str, Any]]:
             period = _extract_period(question)
             if period:
                 params["period"] = period
+            # "top 5 vendedores" → guardar top_n para format (no se pasa al tool, se usa en _format_response)
+            if tool == "get_sales_performance":
+                top_m = re.search(r'\btop\s*(\d{1,2})\b|\bmejores?\s+(\d{1,2})\b', q)
+                if top_m:
+                    params["_top_n"] = int(top_m.group(1) or top_m.group(2))
 
         elif tool == "get_sales_targets":
             period = _extract_period(question)
@@ -313,12 +323,15 @@ def _format_response(tool_name: str, result: Dict[str, Any]) -> str:
         vendors = result.get("vendors", [])
         if not vendors:
             return "No se encontraron datos de rendimiento para el período solicitado."
-        top = vendors[0]
-        return (
-            f"Top vendedor en {result.get('period')}: {top.get('vendor_name')} "
-            f"con S/ {top.get('total_sales', 0):,.2f} en ventas "
-            f"({top.get('num_orders', 0)} pedidos)."
-        )
+        top_n = result.get("top_n", len(vendors))
+        shown = vendors[:top_n]
+        lines = [f"🏆 Top {len(shown)} vendedores — {result.get('period')}:"]
+        for i, v in enumerate(shown, 1):
+            lines.append(
+                f"  {i}. {v.get('vendor_name')} — S/ {v.get('total_sales', 0):,.2f} "
+                f"({v.get('num_orders', 0)} pedidos, {v.get('num_customers', 0)} clientes)"
+            )
+        return "\n".join(lines)
     elif tool_name == "get_customer_insights":
         return (
             f"Cliente {result.get('customer_id')}: "
@@ -540,11 +553,18 @@ class Orchestrator:
 
         # 4. Execute tool
         try:
+            # Extraer meta-params con prefijo _ (no se pasan al tool)
+            top_n_override = tool_params.pop("_top_n", None)
+
             # Look up from module globals so patches in tests work correctly
             import sys as _sys
             _module = _sys.modules[__name__]
             tool_fn = getattr(_module, tool_name, TOOL_REGISTRY.get(tool_name))
             result = await tool_fn(**tool_params)
+
+            # Inyectar meta-params en result para _format_response
+            if top_n_override is not None:
+                result["top_n"] = top_n_override
             elapsed_ms = (time.monotonic() - start_time) * 1000
 
             # 5. Log audit (SUCCESS)
