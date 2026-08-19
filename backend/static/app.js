@@ -74,6 +74,9 @@ function appendAiMessage(text, sources = [], timestamp = null) {
     const el = document.createElement('div');
     el.className = 'message ai-message';
 
+    // Hora local del navegador (no la del servidor que viene en UTC)
+    const localTime = new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+
     // Build source badges
     let badges = '';
     if (sources && sources.length > 0) {
@@ -81,8 +84,7 @@ function appendAiMessage(text, sources = [], timestamp = null) {
         badges = unique.map(tool =>
             `<span class="source-badge">📊 ${escHtml(tool)}</span>`
         ).join(' ');
-        const ts = sources[0]?.timestamp;
-        if (ts) badges += `<span class="source-badge" style="color:#6b7280;border-color:#dde1e7;background:#f9fafb">🕐 ${fmtTime(ts)}</span>`;
+        badges += `<span class="source-badge" style="color:#6b7280;border-color:#dde1e7;background:#f9fafb">🕐 ${localTime}</span>`;
     }
 
     el.innerHTML = `
