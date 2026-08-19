@@ -132,10 +132,23 @@ TOOL_CATALOGUE = [
     },
     {
         "name": "get_inventory_by_sales",
-        "cuándo usarlo": "El usuario pregunta por inventario, stock, rotación de materiales o productos más vendidos.",
+        "cuándo usarlo": "El usuario pregunta por los materiales o productos con MAYOR rotación, los más vendidos, o el inventario general. NO usar si pregunta por el producto menos vendido, menor rotación o menor stock.",
         "params": {},
     },
 ]
+
+# Capacidades que el sistema NO tiene (para que el LLM responda honestamente)
+SYSTEM_LIMITATIONS = """
+Capacidades que el sistema NO tiene actualmente:
+- Producto o material MENOS vendido / menor rotación
+- Forecast a nivel de producto individual (solo existe a nivel total de ventas)
+- Ventas por sucursal o tienda específica (Callao, Lima, etc.)
+- Comparación vs competencia
+- Precios de productos o cotizaciones
+- Información de proveedores
+- Datos de recursos humanos o nómina
+- Tipos de cambio o dólar
+"""
 
 _SYSTEM_PROMPT = (
     "Eres un clasificador de intención para SOLE AI, sistema de ventas de MT Industrial (Perú).\n"
@@ -153,11 +166,16 @@ def _build_prompt(question: str) -> str:
 
     catalogue_txt = json.dumps(TOOL_CATALOGUE, ensure_ascii=False, indent=2)
 
+    limitations = SYSTEM_LIMITATIONS.strip()
+
     return f"""Fecha hoy: {now.strftime('%Y-%m-%d')}
 Mes actual: {cur} | Mes pasado: {prev} | Año actual: {now.year}
 
 Herramientas disponibles:
 {catalogue_txt}
+
+Limitaciones del sistema (lo que NO puede responder):
+{limitations}
 
 Pregunta del usuario: "{question}"
 
@@ -166,11 +184,13 @@ Instrucciones:
 2. Extrae los parámetros de la pregunta (fechas, períodos, números).
 3. "este mes" → period="{cur}", "mes pasado" → period="{prev}", "este año" → period="{now.year}".
 4. Si dice "top 5", "mejores 3", "los 10 primeros" → incluir top_n como entero.
-5. Si el cliente no menciona su código SAP de 7-10 dígitos → tool="__help_customer__".
-6. Si es saludo, chiste, pregunta fuera de ventas → tool=null.
+5. Si pregunta por cliente sin código SAP → tool="__help_customer__".
+6. Si es saludo o pregunta sin relación con ventas → tool=null.
+7. Si la pregunta cae en las LIMITACIONES o ninguna herramienta la responde bien → tool="__out_of_scope__" con params={{"reason":"explicación breve en español"}}.
+   NUNCA uses una herramienta incorrecta solo porque tiene palabras parecidas.
 
 Formato de respuesta (JSON únicamente):
-{{"tool": "nombre_herramienta_o_null", "params": {{...}}}}"""
+{{"tool": "nombre_herramienta_o_null_o___out_of_scope__", "params": {{...}}}}"""
 
 
 # ── Public function ───────────────────────────────────────────────────────────

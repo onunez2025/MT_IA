@@ -543,6 +543,22 @@ class Orchestrator:
         tool_params = selected["params"]
 
         # 2.5. Pseudo-tools: respuestas de ayuda sin llamar a BD
+        if tool_name == "__out_of_scope__":
+            reason = tool_params.get("reason", "")
+            msg = f"Lo siento, no puedo responder esa consulta."
+            if reason:
+                msg += f"\n\n{reason}"
+            msg += (
+                "\n\n💡 Puedo ayudarte con:\n"
+                "• Ventas y facturación por período\n"
+                "• Brecha vs meta mensual\n"
+                "• Ranking de vendedores\n"
+                "• Clientes inactivos o nuevos\n"
+                "• Ventas por canal y productos con mayor margen\n"
+                "• Tendencia de ventas"
+            )
+            return QueryResponse(status="success", response=msg, sources=[])
+
         if tool_name == "__help_customer__":
             return QueryResponse(
                 status="success",
