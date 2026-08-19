@@ -1,0 +1,35 @@
+# ── Credenciales y entornos ───────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+
+# ── Python ────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+
+# ── Excel generados por el sistema (contienen datos sensibles) ────────────
+Forecast_*.xlsx
+**/Forecast_*.xlsx
+
+# ── Carpetas internas de herramientas ─────────────────────────────────────
+.superpowers/
+.claude/
+.idea/
+.vscode/
+*.DS_Store
+
+# ── Logs ──────────────────────────────────────────────────────────────────
+*.log
+logs/
