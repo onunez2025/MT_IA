@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 from connectors.sql_connector import azure_sql
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -354,10 +355,17 @@ async def generate_forecast_report(year: int = 2026,
         logger.warning(f"Could not save forecast file: {e}")
         filepath = None
 
+    # Construir link de descarga si hay URL pública configurada
+    download_url = None
+    if file_saved and settings.public_url:
+        base = settings.public_url.rstrip("/")
+        download_url = f"{base}/reports/{filename}"
+
     return {
         "file_path": filepath if file_saved else None,
         "filename": filename if file_saved else None,
         "file_saved": file_saved,
+        "download_url": download_url,
         "period": f"{year}-{month:02d}",
         "target_month": target_month_name,
         "forecast_conservador": forecast_conservador,

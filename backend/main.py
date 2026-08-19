@@ -1,4 +1,6 @@
 # backend/main.py
+import os
+import re
 from fastapi import FastAPI, Header, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -101,6 +103,32 @@ async def list_tools(user: User = Depends(get_current_user)):
     """List tools available to the current user."""
     from guards.rbac import get_allowed_tools
     return {"user_id": user.user_id, "allowed_tools": get_allowed_tools(user.roles)}
+
+
+@app.get("/reports/{filename}")
+async def download_report(filename: str):
+    """
+    Descarga un reporte generado (Excel de forecast).
+    Solo permite archivos .xlsx con nombre seguro (sin path traversal).
+    """
+    # Validar que el nombre sea seguro: solo letras, números, _, -, . y termine en .xlsx
+    if not re.match(r'^[\w\-]+\.xlsx$', filename):
+        raise HTTPException(status_code=400, detail="Nombre de archivo inválido.")
+
+    output_dir = os.getenv("FORECAST_OUTPUT_DIR", "/tmp")
+    filepath = os.path.join(output_dir, filename)
+
+    if not os.path.isfile(filepath):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Reporte '{filename}' no encontrado. Puede que haya expirado — genera uno nuevo."
+        )
+
+    return FileResponse(
+        path=filepath,
+        filename=filename,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 # ── Frontend estático ────────────────────────────────────────────

@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com/v1"
 
+    # URL pública del backend (para links de descarga en respuestas del agente)
+    # Ej: https://gac-sole-mt-ia.jppsfv.easypanel.host
+    public_url: str = ""
+
     class Config:
         env_file = ".env"
         case_sensitive = False
