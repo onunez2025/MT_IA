@@ -219,11 +219,38 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "search_customer_by_name",
+            "description": (
+                "Busca clientes por nombre o razón social (búsqueda parcial). "
+                "Devuelve lista de clientes coincidentes con su código SAP, compras totales y última compra. "
+                "Usar cuando el usuario mencione el nombre de un cliente pero NO su código SAP. "
+                "Ejemplo: 'ventas de VALVOSANITARIA', 'cuánto compró SODIMAC', 'historial de Ferreyros'. "
+                "SIEMPRE usar esta tool primero si el usuario da un nombre, no un código."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Nombre o fragmento del nombre del cliente. Ej: 'VALVOSANITARIA', 'SODIMAC'."
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Máximo de resultados a devolver. Default: 10."
+                    },
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_customer_insights",
             "description": (
                 "Historial completo de UN cliente específico: transacciones, gasto total, última compra, frecuencia. "
                 "REQUIERE el código numérico SAP del cliente (7-10 dígitos). "
-                "Si el usuario no proporciona el código, NO llamar esta función."
+                "Si el usuario da un nombre (no un código), usar primero search_customer_by_name para obtener el código."
             ),
             "parameters": {
                 "type": "object",
@@ -466,7 +493,7 @@ dar contexto útil para la toma de decisiones.
 - 🇵🇪 Responde SIEMPRE en español.
 - 📊 Sé analítico: no copies los datos crudos, interprértalos y da contexto.
 - ✅ No inventes datos. Si una herramienta no devuelve resultados, dilo.
-- 🤝 Si el usuario pregunta por un cliente sin dar su código SAP, pídele el código (7-10 dígitos).
+- 🔍 Si el usuario menciona un cliente por nombre, usa search_customer_by_name primero para encontrar su código SAP; luego llama get_customer_insights con ese código. No pidas el código al usuario — búscalo tú.
 
 ## Limitaciones del sistema (lo que NO puedes responder con datos)
 - Forecast a nivel de producto individual (solo existe a nivel total de ventas)

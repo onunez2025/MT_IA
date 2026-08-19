@@ -11,6 +11,48 @@ from tools.utils import query_cache
 logger = logging.getLogger(__name__)
 
 
+async def search_customer_by_name(name: str, limit: int = 10) -> Dict[str, Any]:
+    """
+    Busca clientes por nombre o razón social (búsqueda parcial).
+    Devuelve lista de coincidencias con código SAP y totales YTD.
+
+    Args:
+        name:  Nombre o fragmento del nombre (ej: 'VALVOSANITARIA', 'SODIMAC').
+        limit: Máximo de resultados. Default 10.
+    """
+    safe_name = name.replace("'", "''").upper()
+    limit = max(1, min(int(limit), 30))
+
+    rows = await azure_sql.query_readonly(f"""
+        SELECT TOP {limit}
+            VC_solicitante_codigo       AS codigo,
+            MAX(VC_solicitante_razon_social) AS razon_social,
+            SUM(DE_neto)               AS total_compras,
+            COUNT(DISTINCT VC_documento_pago_numero) AS pedidos,
+            MAX(DT_documento_pago_fecha) AS ultima_compra
+        FROM SAP.SD_VENTAS
+        WHERE VC_solicitante_razon_social LIKE '%{safe_name}%'
+          AND VC_solicitante_codigo IS NOT NULL
+        GROUP BY VC_solicitante_codigo
+        ORDER BY total_compras DESC
+    """)
+
+    return {
+        "query": name,
+        "total_encontrados": len(rows),
+        "clientes": [
+            {
+                "codigo_sap": r.get("codigo"),
+                "razon_social": r.get("razon_social"),
+                "total_compras": round(float(r.get("total_compras") or 0), 2),
+                "pedidos": int(r.get("pedidos") or 0),
+                "ultima_compra": str(r.get("ultima_compra") or ""),
+            }
+            for r in rows
+        ],
+    }
+
+
 async def get_customer_insights(customer_id: str) -> Dict[str, Any]:
     """
     Get customer profile and purchase history.

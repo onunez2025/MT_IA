@@ -9,6 +9,7 @@ _VENDEDOR_TOOLS = [
     "get_sales_summary",
     "get_sales_targets",
     "get_customer_insights",
+    "search_customer_by_name",
     # Nuevas Fase 0+ — acceso para Vendedor
     "get_gap_to_target",
     "get_inactive_customers",

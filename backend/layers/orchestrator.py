@@ -26,7 +26,7 @@ from tools.sales_tools import (
     get_sales_forecast,
     get_sales_performance,
 )
-from tools.customer_tools import get_customer_insights
+from tools.customer_tools import get_customer_insights, search_customer_by_name
 from tools.inventory_tools import get_inventory_by_sales
 from tools.analytics_tools import (
     get_gap_to_target,
@@ -56,6 +56,7 @@ TOOL_REGISTRY: Dict[str, Any] = {
     "get_sales_targets":      get_sales_targets,
     "get_sales_forecast":     get_sales_forecast,
     "get_customer_insights":  get_customer_insights,
+    "search_customer_by_name": search_customer_by_name,
     "get_sales_performance":  get_sales_performance,
     "get_inventory_by_sales": get_inventory_by_sales,
     # Fase 0+ nuevas
