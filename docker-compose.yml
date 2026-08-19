@@ -1,13 +1,12 @@
-# docker-compose.yml
-# Uso LOCAL: carga variables desde backend/.env
-# EasyPanel: ignorar este archivo — variables se configuran en la UI de EasyPanel
+# docker-compose.yml — uso LOCAL únicamente
+# EasyPanel: no usa este archivo, build directo desde Dockerfile con contexto raíz
 version: "3.9"
 
 services:
   sole-ai:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     image: sole-ai:local
     container_name: sole-ai-dev
     ports:

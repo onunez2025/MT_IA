@@ -1,7 +1,9 @@
 # backend/Dockerfile
+# Contexto de build: raíz del repositorio (para EasyPanel / CI)
+# Build local con docker-compose: context: ./backend (docker-compose.yml)
 FROM python:3.11-slim
 
-# Instalar ODBC Driver 18 for SQL Server (requerido por la BD Azure SQL)
+# Instalar ODBC Driver 18 for SQL Server
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     gnupg \
@@ -14,27 +16,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Directorio de trabajo
 WORKDIR /app
 
-# Instalar dependencias Python primero (capa cacheada)
-COPY requirements.txt .
+# Dependencias Python — ruta relativa a raíz del repo
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar código de la aplicación
-COPY . .
+# Código de la aplicación
+COPY backend/ .
 
-# Usuario sin privilegios para seguridad
+# Usuario sin privilegios
 RUN useradd --create-home --shell /bin/bash appuser \
     && chown -R appuser:appuser /app
 USER appuser
 
-# Puerto expuesto
 EXPOSE 8000
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Comando de inicio
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
