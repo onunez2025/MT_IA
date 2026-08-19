@@ -69,7 +69,9 @@ TOOL_KEYWORDS: List[Dict[str, Any]] = [
     {
         "tool": "get_inactive_customers",
         "keywords": ["inactivo", "inactivos", "sin compra", "no compran",
-                     "clientes que no han comprado", "reactivar", "reactivación"],
+                     "no han comprado", "no compró", "no compro",
+                     "clientes que no han comprado", "reactivar", "reactivación",
+                     "no han vuelto", "dejaron de comprar", "perdidos"],
         "default_params": {"days": 60},
     },
     {
@@ -124,8 +126,9 @@ TOOL_KEYWORDS: List[Dict[str, Any]] = [
     },
     {
         "tool": "get_sales_summary",
-        "keywords": ["venta", "ventas", "resumen", "total", "ingreso", "revenue",
-                     "cuánto", "cuanto", "top", "vendedor"],
+        "keywords": ["venta", "ventas", "resumen", "total ventas", "ingreso", "revenue",
+                     "cuanto vendimos", "cuánto vendimos", "cuanto se vendio",
+                     "cuánto se vendió", "facturacion", "facturación"],
         "default_params": {"period": "2026-08"},
     },
 ]
@@ -215,6 +218,12 @@ def _select_tool(question: str) -> Optional[Dict[str, Any]]:
             code_m = re.search(r'\b(\d{7,10})\b', question)
             if code_m:
                 params["customer_id"] = code_m.group(1)
+            else:
+                # Sin código de cliente identificable → devolver ayuda en lugar de buscar "unknown"
+                return {
+                    "tool": "__help_customer__",
+                    "params": {},
+                }
 
         elif tool == "get_gap_to_target":
             period = _extract_period(question)
@@ -356,7 +365,6 @@ def _format_response(tool_name: str, result: Dict[str, Any]) -> str:
         total   = result.get("total_ventas", 0)
         if not canales:
             return "No se encontraron ventas por canal para el período indicado."
-        top = canales[0]
         lines = [
             f"Ventas por canal — {result.get('period')} (Total: S/ {total:,.2f}):"
         ]
@@ -364,6 +372,10 @@ def _format_response(tool_name: str, result: Dict[str, Any]) -> str:
             lines.append(
                 f"  • {c['canal']}: S/ {c['ventas']:,.2f} ({c['participacion_pct']}%)"
             )
+        lines.append(
+            "\n⚠️ Nota: estos totales corresponden a ventas con canal registrado en el sistema "
+            "(puede ser menor al total general de ventas del período)."
+        )
         return "\n".join(lines)
     elif tool_name == "get_monthly_trend":
         periodos = result.get("periodos", [])
@@ -492,6 +504,21 @@ class Orchestrator:
 
         tool_name = selected["tool"]
         tool_params = selected["params"]
+
+        # 2.5. Pseudo-tools: respuestas de ayuda sin llamar a BD
+        if tool_name == "__help_customer__":
+            return QueryResponse(
+                status="success",
+                response=(
+                    "Para consultar el historial de un cliente específico necesito su código de cliente "
+                    "(número de 7-10 dígitos en el sistema SAP).\n\n"
+                    "Ejemplo: 'historial del cliente 1234567'\n\n"
+                    "Si buscas clientes inactivos o nuevos, puedes preguntar:\n"
+                    "• '¿Qué clientes no han comprado en 60 días?'\n"
+                    "• '¿Cuántos clientes nuevos tuvimos en agosto?'"
+                ),
+                sources=[],
+            )
 
         # 3. Validate RBAC
         if not validate_rbac(user.roles, tool_name):
