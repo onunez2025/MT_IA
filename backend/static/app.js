@@ -74,8 +74,12 @@ function appendAiMessage(text, sources = [], timestamp = null) {
     const el = document.createElement('div');
     el.className = 'message ai-message';
 
-    // Hora local del navegador (no la del servidor que viene en UTC)
-    const localTime = new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+    // Hora en zona horaria de Lima (UTC-5) — forzada para que no dependa de la config del equipo
+    const localTime = new Date().toLocaleTimeString('es-PE', {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'America/Lima',
+    });
 
     // Build source badges
     let badges = '';
