@@ -1,6 +1,8 @@
 # backend/layers/orchestrator.py
 import logging
+import re
 import time
+from datetime import datetime
 from typing import Dict, Any, Optional, List
 
 from models.query import QueryResponse
@@ -34,7 +36,7 @@ TOOL_KEYWORDS: List[Dict[str, Any]] = [
     {
         "tool": "get_sales_forecast",
         "keywords": ["forecast", "pronóstico", "pronostico", "proyección", "proyeccion"],
-        "default_params": {"start_period": "2026-09", "end_period": "2026-12"},
+        "default_params": {"start_period": "2026-01", "end_period": "2026-08"},
     },
     {
         "tool": "get_sales_targets",
@@ -64,15 +66,93 @@ TOOL_KEYWORDS: List[Dict[str, Any]] = [
 ]
 
 
+_MONTH_MAP = {
+    "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
+    "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12,
+    "january": 1, "february": 2, "march": 3, "april": 4, "june": 6,
+    "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
+}
+
+
+def _extract_period(question: str) -> Optional[str]:
+    """Extract period string YYYY-MM or YYYY from question text."""
+    q = question.lower()
+    now = datetime.now()
+
+    # Explicit YYYY-MM
+    m = re.search(r'\b(20\d\d)[/-](\d{1,2})\b', q)
+    if m:
+        return f"{m.group(1)}-{int(m.group(2)):02d}"
+
+    # Month name + year: "julio 2026" / "2026 julio"
+    for name, num in _MONTH_MAP.items():
+        if name in q:
+            yr_m = re.search(r'\b(20\d\d)\b', q)
+            year = int(yr_m.group(1)) if yr_m else now.year
+            return f"{year}-{num:02d}"
+
+    # "este mes" / "del mes" / "mes actual"
+    if any(k in q for k in ["este mes", "del mes", "mes actual", "mes pasado"]):
+        month = now.month - 1 if "pasado" in q else now.month
+        year  = now.year if month > 0 else now.year - 1
+        month = month or 12
+        return f"{year}-{month:02d}"
+
+    # Solo año
+    yr_m = re.search(r'\b(20\d\d)\b', q)
+    if yr_m:
+        return yr_m.group(1)
+
+    return None
+
+
 def _select_tool(question: str) -> Optional[Dict[str, Any]]:
     """
-    Select tool based on keyword heuristics.
+    Select tool based on keyword heuristics and extract params from question text.
     Returns dict with 'tool' and 'params', or None if no match.
     """
     q = question.lower()
+    now = datetime.now()
+
     for entry in TOOL_KEYWORDS:
-        if any(kw in q for kw in entry["keywords"]):
-            return {"tool": entry["tool"], "params": dict(entry["default_params"])}
+        if not any(kw in q for kw in entry["keywords"]):
+            continue
+
+        params = dict(entry["default_params"])
+        tool   = entry["tool"]
+
+        # Enrich params from question text
+        if tool in ("get_sales_summary", "get_sales_performance"):
+            period = _extract_period(question)
+            if period:
+                params["period"] = period
+
+        elif tool == "get_sales_targets":
+            period = _extract_period(question)
+            if period and "-" in period:
+                yr, mo = period.split("-")
+                params["year"]  = int(yr)
+                params["month"] = int(mo)
+            elif period:
+                params["year"] = int(period)
+                params.pop("month", None)
+
+        elif tool == "get_sales_forecast":
+            # Look for two periods or a year range
+            yr_m = re.search(r'\b(20\d\d)\b', q)
+            if yr_m:
+                yr = yr_m.group(1)
+                params["start_period"] = f"{yr}-01"
+                params["end_period"]   = f"{yr}-{now.month:02d}" if int(yr) == now.year else f"{yr}-12"
+
+        elif tool == "get_customer_insights":
+            # Extract numeric customer code (7–10 digits)
+            code_m = re.search(r'\b(\d{7,10})\b', question)
+            if code_m:
+                params["customer_id"] = code_m.group(1)
+
+        return {"tool": tool, "params": params}
+
     return None
 
 
