@@ -318,7 +318,14 @@ async def generate_forecast_report(year: int = 2026,
     # ── 6. Guardar ──
     filename = f"Forecast_{target_month_name}_{year}.xlsx"
     filepath = os.path.join(_OUTPUT_DIR, filename)
-    wb.save(filepath)
+    try:
+        wb.save(filepath)
+    except PermissionError:
+        # Archivo en uso — agregar timestamp al nombre
+        ts = datetime.now().strftime("%H%M%S")
+        filename = f"Forecast_{target_month_name}_{year}_{ts}.xlsx"
+        filepath = os.path.join(_OUTPUT_DIR, filename)
+        wb.save(filepath)
     logger.info(f"Forecast report saved: {filepath}")
 
     return {
