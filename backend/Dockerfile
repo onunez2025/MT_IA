@@ -1,16 +1,22 @@
 # backend/Dockerfile
-# Contexto de build: raíz del repositorio (para EasyPanel / CI)
-# Build local con docker-compose: context: ./backend (docker-compose.yml)
-FROM python:3.11-slim
+# Contexto de build: raíz del repositorio (EasyPanel / CI)
+# Build local: docker-compose.yml usa el mismo contexto raíz
+
+# Pinamos a Bookworm (Debian 12) para garantizar compatibilidad con
+# el repo de Microsoft ODBC 18 — Trixie (Debian 13) no tiene apt-key
+FROM python:3.11-slim-bookworm
 
 # Instalar ODBC Driver 18 for SQL Server
+# Usamos gpg --dearmor en vez de apt-key (deprecado desde Debian 12)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    gnupg \
+    gnupg2 \
     unixodbc-dev \
-    && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
-    && curl https://packages.microsoft.com/config/debian/12/prod.list \
-        > /etc/apt/sources.list.d/mssql-release.list \
+    && curl -sSL https://packages.microsoft.com/keys/microsoft.asc \
+       | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg \
+    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] \
+       https://packages.microsoft.com/debian/12/prod bookworm main" \
+       > /etc/apt/sources.list.d/mssql-release.list \
     && apt-get update \
     && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 \
     && apt-get clean \
@@ -18,7 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Dependencias Python — ruta relativa a raíz del repo
+# Dependencias Python (ruta relativa a raíz del repo)
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
