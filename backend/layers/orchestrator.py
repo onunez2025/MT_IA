@@ -445,6 +445,29 @@ class Orchestrator:
                 error_message="Empty question after sanitization",
             )
 
+        # 1.5. Saludos y mensajes cortos sin intención de consulta
+        _GREETINGS = {
+            "hola", "hello", "hi", "buenas", "hey", "buen dia", "buen día",
+            "buenos dias", "buenos días", "buenas tardes", "buenas noches",
+            "gracias", "thanks", "ok", "okay", "listo", "perfecto",
+        }
+        q_lower = clean_question.lower().strip()
+        if q_lower in _GREETINGS or (len(q_lower.split()) <= 3 and q_lower in _GREETINGS):
+            return QueryResponse(
+                status="success",
+                response=(
+                    "¡Hola! Soy SOLE, tu asistente de ventas MT Industrial 👋\n\n"
+                    "Puedo ayudarte con:\n"
+                    "• Ventas del mes o período\n"
+                    "• Brecha vs meta\n"
+                    "• Clientes inactivos o nuevos\n"
+                    "• Forecast y tendencias\n"
+                    "• Ventas por canal y margen de productos\n\n"
+                    "¿Qué quieres consultar?"
+                ),
+                sources=[],
+            )
+
         # 2. Select tool
         selected = _select_tool(clean_question)
         if not selected:

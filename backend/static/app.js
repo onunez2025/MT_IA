@@ -177,8 +177,17 @@ chatForm.addEventListener('submit', async (e) => {
         hideTyping();
 
         if (data.status === 'success') {
+            // Respuesta normal con datos
             appendAiMessage(data.response, data.sources);
+        } else if (data.status === 'blocked') {
+            // RBAC: el usuario no tiene permiso
+            appendErrorMessage('🔒 No tienes permiso para acceder a esta información.');
+        } else if (data.response) {
+            // Error con mensaje amigable (ej: "no entendí tu pregunta")
+            // → mostrar como mensaje AI normal, sin burbuja roja
+            appendAiMessage(data.response, []);
         } else {
+            // Error técnico sin mensaje amigable
             appendErrorMessage(data.error_message || 'No pude procesar tu pregunta. Inténtalo de otra forma.');
         }
     } catch (err) {
