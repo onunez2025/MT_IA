@@ -286,6 +286,58 @@ html, body {
     padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
+/* ── Markdown rendering (respuestas del agente) ──────────────── */
+
+/* Listas dentro de burbujas */
+.resp-list {
+    margin: 6px 0 6px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.resp-list li { font-size: .91rem; line-height: 1.5; }
+
+/* Encabezados dentro de burbujas */
+.resp-h {
+    font-size: .97rem;
+    font-weight: 700;
+    margin: 8px 0 2px;
+    color: var(--navy);
+}
+
+/* Código inline */
+.bubble code {
+    background: #f0f2f5;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: .85em;
+    font-family: "Consolas", "SF Mono", monospace;
+    color: #c7254e;
+}
+
+/* Separadores */
+.bubble hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 10px 0;
+}
+
+/* Badges — contenedor de las etiquetas de herramientas y hora */
+.badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+/* Badge de hora — tono más neutro que el badge de herramienta */
+.time-badge {
+    color: var(--muted);
+    background: #f9fafb;
+    border-color: var(--border);
+}
+
 /* ── Responsive ──────────────────────────────────────────────── */
 @media (max-width: 480px) {
     .message { max-width: 96%; }

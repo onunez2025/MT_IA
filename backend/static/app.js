@@ -1,5 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════
-   SOLE AI — chat frontend
+   SOLE AI — chat frontend  v4
+   Arquitectura agéntica: las respuestas son texto libre generado
+   por el LLM (markdown básico), no plantillas fijas.
    ═══════════════════════════════════════════════════════════════ */
 
 const API_URL       = '/api/chat';
@@ -11,49 +13,108 @@ const roleSelect    = document.getElementById('roleSelect');
 
 // ── Helpers ──────────────────────────────────────────────────────
 
-/** Scroll chat to bottom */
 function scrollBottom() {
     chatContainer.scrollTop = chatContainer.scrollHeight;
 }
 
-/** Format timestamp as HH:MM */
-function fmtTime(iso) {
-    const d = iso ? new Date(iso) : new Date();
-    return d.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
-}
-
-/** Escape HTML to prevent XSS */
 function escHtml(str) {
-    return str
+    return String(str)
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
 }
 
-/** Convert plain text with newlines to HTML paragraphs/lists */
+/**
+ * Convierte texto con markdown básico a HTML seguro.
+ * Soporta: **bold**, *italic*, listas (-, *, •), listas numeradas,
+ * líneas horizontales (---), párrafos y saltos de línea.
+ */
 function formatResponse(text) {
-    // Preserve bullet points (lines starting with •  -  *)
-    const lines = escHtml(text).split('\n');
-    const html = [];
-    let inList = false;
+    if (!text) return '';
 
-    for (const raw of lines) {
-        const line = raw.trim();
-        if (!line) {
-            if (inList) { html.push('</ul>'); inList = false; }
+    const lines = text.split('\n');
+    const html  = [];
+    let inUl = false;
+    let inOl = false;
+
+    const closeList = () => {
+        if (inUl) { html.push('</ul>'); inUl = false; }
+        if (inOl) { html.push('</ol>'); inOl = false; }
+    };
+
+    /** Aplica inline markdown (bold, italic, código) a una línea ya escapada. */
+    const inlineMarkdown = (raw) => {
+        let s = escHtml(raw);
+        // **bold** o __bold__
+        s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        s = s.replace(/__(.+?)__/g, '<strong>$1</strong>');
+        // *italic* o _italic_  (cuidado con guiones de listas)
+        s = s.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
+        // `código`
+        s = s.replace(/`(.+?)`/g, '<code>$1</code>');
+        return s;
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+        const raw  = lines[i];
+        const line = raw.trimEnd();
+
+        // Línea vacía → cierra listas, agrega separador
+        if (!line.trim()) {
+            closeList();
+            // No agregar <br> redundantes entre bloques
+            if (html.length && html[html.length - 1] !== '<br>') {
+                html.push('<br>');
+            }
             continue;
         }
-        const isBullet = /^[•\-\*]\s+/.test(line);
-        if (isBullet) {
-            if (!inList) { html.push('<ul class="resp-list">'); inList = true; }
-            html.push(`<li>${line.replace(/^[•\-\*]\s+/, '')}</li>`);
-        } else {
-            if (inList) { html.push('</ul>'); inList = false; }
-            html.push(`<p>${line}</p>`);
+
+        // Regla horizontal (---, ___, ***)
+        if (/^[-_*]{3,}$/.test(line.trim())) {
+            closeList();
+            html.push('<hr>');
+            continue;
         }
+
+        // Encabezados # ## ###
+        const hMatch = line.match(/^(#{1,3})\s+(.+)/);
+        if (hMatch) {
+            closeList();
+            const level = Math.min(hMatch[1].length + 3, 6); // h4..h6 para no dominar el estilo
+            html.push(`<h${level} class="resp-h">${inlineMarkdown(hMatch[2])}</h${level}>`);
+            continue;
+        }
+
+        // Lista desordenada (-, *, •)
+        const ulMatch = line.match(/^[\s]*[-*•]\s+(.+)/);
+        if (ulMatch) {
+            if (inOl) { html.push('</ol>'); inOl = false; }
+            if (!inUl) { html.push('<ul class="resp-list">'); inUl = true; }
+            html.push(`<li>${inlineMarkdown(ulMatch[1])}</li>`);
+            continue;
+        }
+
+        // Lista ordenada (1. 2. 3.)
+        const olMatch = line.match(/^[\s]*(\d+)\.\s+(.+)/);
+        if (olMatch) {
+            if (inUl) { html.push('</ul>'); inUl = false; }
+            if (!inOl) { html.push('<ol class="resp-list">'); inOl = true; }
+            html.push(`<li>${inlineMarkdown(olMatch[2])}</li>`);
+            continue;
+        }
+
+        // Párrafo normal
+        closeList();
+        html.push(`<p>${inlineMarkdown(line)}</p>`);
     }
-    if (inList) html.push('</ul>');
+
+    closeList();
+
+    // Limpiar <br> redundantes al inicio/final
+    while (html.length && html[0] === '<br>') html.shift();
+    while (html.length && html[html.length - 1] === '<br>') html.pop();
+
     return html.join('');
 }
 
@@ -70,32 +131,35 @@ function appendUserMessage(text) {
     scrollBottom();
 }
 
-function appendAiMessage(text, sources = [], timestamp = null) {
+function appendAiMessage(text, sources = []) {
     const el = document.createElement('div');
     el.className = 'message ai-message';
 
-    // Hora en zona horaria de Lima (UTC-5) — forzada para que no dependa de la config del equipo
+    // Hora en Lima (UTC-5)
     const localTime = new Date().toLocaleTimeString('es-PE', {
         hour: '2-digit',
         minute: '2-digit',
         timeZone: 'America/Lima',
     });
 
-    // Build source badges
+    // Badges: herramientas usadas + timestamp
     let badges = '';
     if (sources && sources.length > 0) {
         const unique = [...new Set(sources.map(s => s.tool))];
-        badges = unique.map(tool =>
-            `<span class="source-badge">📊 ${escHtml(tool)}</span>`
+        badges = unique.map(t =>
+            `<span class="source-badge">📊 ${escHtml(t)}</span>`
         ).join(' ');
-        badges += `<span class="source-badge" style="color:#6b7280;border-color:#dde1e7;background:#f9fafb">🕐 ${localTime}</span>`;
+        badges += `<span class="source-badge time-badge">🕐 ${localTime}</span>`;
+    } else {
+        // Mensajes sin herramientas (saludos, out-of-scope): mostrar solo hora
+        badges = `<span class="source-badge time-badge">🕐 ${localTime}</span>`;
     }
 
     el.innerHTML = `
         <div class="avatar">🤖</div>
         <div class="bubble">
             ${formatResponse(text)}
-            ${badges ? `<div class="badges">${badges}</div>` : ''}
+            <div class="badges">${badges}</div>
         </div>
     `;
     chatContainer.appendChild(el);
@@ -143,7 +207,6 @@ function hideTyping() {
 
 async function sendQuestion(question) {
     const role = roleSelect.value;
-
     const res = await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -158,18 +221,16 @@ async function sendQuestion(question) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || `Error ${res.status}`);
     }
-
     return res.json();
 }
 
-// ── Main submit handler ───────────────────────────────────────────
+// ── Submit handler ────────────────────────────────────────────────
 
 chatForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const question = questionInput.value.trim();
     if (!question) return;
 
-    // Lock UI
     questionInput.value = '';
     questionInput.disabled = true;
     sendBtn.disabled = true;
@@ -179,21 +240,16 @@ chatForm.addEventListener('submit', async (e) => {
 
     try {
         const data = await sendQuestion(question);
-
         hideTyping();
 
         if (data.status === 'success') {
-            // Respuesta normal con datos
             appendAiMessage(data.response, data.sources);
         } else if (data.status === 'blocked') {
-            // RBAC: el usuario no tiene permiso
             appendErrorMessage('🔒 No tienes permiso para acceder a esta información.');
         } else if (data.response) {
-            // Error con mensaje amigable (ej: "no entendí tu pregunta")
-            // → mostrar como mensaje AI normal, sin burbuja roja
+            // Error con mensaje amigable → mostrar como burbuja normal
             appendAiMessage(data.response, []);
         } else {
-            // Error técnico sin mensaje amigable
             appendErrorMessage(data.error_message || 'No pude procesar tu pregunta. Inténtalo de otra forma.');
         }
     } catch (err) {
@@ -210,7 +266,7 @@ chatForm.addEventListener('submit', async (e) => {
     }
 });
 
-// Enter sends, Shift+Enter newline (no-op aquí pues es input de una línea)
+// Enter envía, Shift+Enter no hace nada (input de una línea)
 questionInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
