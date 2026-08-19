@@ -221,18 +221,20 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "search_customer_by_name",
             "description": (
-                "Busca clientes por nombre o razón social (búsqueda parcial). "
-                "Devuelve lista de clientes coincidentes con su código SAP, compras totales y última compra. "
-                "Usar cuando el usuario mencione el nombre de un cliente pero NO su código SAP. "
-                "Ejemplo: 'ventas de VALVOSANITARIA', 'cuánto compró SODIMAC', 'historial de Ferreyros'. "
-                "SIEMPRE usar esta tool primero si el usuario da un nombre, no un código."
+                "Busca clientes por nombre/razón social O por número de documento (DNI, RUC, carnet de extranjería). "
+                "Detecta automáticamente si el input es número (→ busca por documento) o texto (→ busca por nombre). "
+                "Devuelve lista de clientes con código SAP, razón social, doc de identidad, compras totales y última compra. "
+                "SIEMPRE usar esta tool primero cuando el usuario mencione un nombre, DNI, RUC o CE — nunca pedir el código SAP al usuario."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "name": {
                         "type": "string",
-                        "description": "Nombre o fragmento del nombre del cliente. Ej: 'VALVOSANITARIA', 'SODIMAC'."
+                        "description": (
+                            "Nombre, fragmento de nombre, DNI, RUC o carnet de extranjería. "
+                            "Ej: 'VALVOSANITARIA', 'SODIMAC', '70333796', '20601234567'."
+                        )
                     },
                     "limit": {
                         "type": "integer",

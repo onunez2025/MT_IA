@@ -13,25 +13,35 @@ logger = logging.getLogger(__name__)
 
 async def search_customer_by_name(name: str, limit: int = 10) -> Dict[str, Any]:
     """
-    Busca clientes por nombre o razón social (búsqueda parcial).
-    Devuelve lista de coincidencias con código SAP y totales YTD.
+    Busca clientes por nombre/razón social O por número de documento
+    (DNI, RUC, carnet de extranjería).
+
+    Detecta automáticamente si el input es un número (→ busca por documento)
+    o texto (→ busca por razón social).
 
     Args:
-        name:  Nombre o fragmento del nombre (ej: 'VALVOSANITARIA', 'SODIMAC').
+        name:  Nombre, fragmento de nombre, DNI, RUC o CE. Ej: 'VALVOSANITARIA', '70333796'.
         limit: Máximo de resultados. Default 10.
     """
-    safe_name = name.replace("'", "''").upper()
+    safe_input = name.strip().replace("'", "''")
     limit = max(1, min(int(limit), 30))
+
+    # ¿Es numérico? → buscar por VC_solicitante_identificacion_numero
+    if safe_input.isdigit():
+        where_clause = f"VC_solicitante_identificacion_numero = '{safe_input}'"
+    else:
+        where_clause = f"VC_solicitante_razon_social LIKE '%{safe_input.upper()}%'"
 
     rows = await azure_sql.query_readonly(f"""
         SELECT TOP {limit}
-            VC_solicitante_codigo       AS codigo,
-            MAX(VC_solicitante_razon_social) AS razon_social,
-            SUM(DE_neto)               AS total_compras,
-            COUNT(DISTINCT VC_documento_pago_numero) AS pedidos,
-            MAX(DT_documento_pago_fecha) AS ultima_compra
+            VC_solicitante_codigo                       AS codigo,
+            MAX(VC_solicitante_razon_social)            AS razon_social,
+            MAX(VC_solicitante_identificacion_numero)   AS doc_identidad,
+            SUM(DE_neto)                                AS total_compras,
+            COUNT(DISTINCT VC_documento_pago_numero)    AS pedidos,
+            MAX(DT_documento_pago_fecha)                AS ultima_compra
         FROM SAP.SD_VENTAS
-        WHERE VC_solicitante_razon_social LIKE '%{safe_name}%'
+        WHERE {where_clause}
           AND VC_solicitante_codigo IS NOT NULL
         GROUP BY VC_solicitante_codigo
         ORDER BY total_compras DESC
@@ -39,11 +49,13 @@ async def search_customer_by_name(name: str, limit: int = 10) -> Dict[str, Any]:
 
     return {
         "query": name,
+        "busqueda_por": "documento" if safe_input.isdigit() else "nombre",
         "total_encontrados": len(rows),
         "clientes": [
             {
                 "codigo_sap": r.get("codigo"),
                 "razon_social": r.get("razon_social"),
+                "doc_identidad": r.get("doc_identidad"),
                 "total_compras": round(float(r.get("total_compras") or 0), 2),
                 "pedidos": int(r.get("pedidos") or 0),
                 "ultima_compra": str(r.get("ultima_compra") or ""),
