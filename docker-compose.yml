@@ -1,4 +1,6 @@
-# docker-compose.yml — for local testing only
+# docker-compose.yml
+# Uso LOCAL: carga variables desde backend/.env
+# EasyPanel: ignorar este archivo — variables se configuran en la UI de EasyPanel
 version: "3.9"
 
 services:
