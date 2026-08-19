@@ -38,6 +38,7 @@ async def get_customer_insights(customer_id: str) -> Dict[str, Any]:
     sql_safe_id = safe_id.replace("'", "''")
     history_query = f"""
     SELECT
+        MAX(VC_solicitante_razon_social)         AS razon_social,
         COUNT(DISTINCT VC_documento_pago_numero) AS num_transactions,
         SUM(DE_neto)                             AS total_spent,
         MAX(DT_documento_pago_fecha)             AS last_purchase_date,
@@ -62,9 +63,14 @@ async def get_customer_insights(customer_id: str) -> Dict[str, Any]:
     except Exception as e:
         logger.warning(f"C4C lookup failed for {safe_id}: {e}")
 
+    # Preferir razón social de SAP SD_VENTAS; C4C como fallback
+    razon_social_sap = history.get("razon_social")
+    resolved_name = customer_name or razon_social_sap
+
     result = {
         "customer_id": safe_id,
-        "name": customer_name,
+        "name": resolved_name,
+        "razon_social": razon_social_sap,
         "email": customer_email,
         "phone": customer_phone,
         "num_transactions": int(history.get("num_transactions") or 0),
