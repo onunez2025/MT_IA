@@ -387,6 +387,7 @@ async def get_product_sales_ranking(
     top_n: int = 10,
     sort_order: str = "DESC",          # "DESC" = más vendidos, "ASC" = menos vendidos
     category: Optional[str] = None,
+    store_code: Optional[str] = None,  # Filtrar por tienda: 'SH01', 'ME10', etc.
 ) -> Dict[str, Any]:
     """
     Ranking de productos por ventas en soles para un período.
@@ -411,6 +412,10 @@ async def get_product_sales_ranking(
     if category:
         safe_cat = category.replace("'", "''")
         where_parts.append(f"GrupoMaterialDirectorio = '{safe_cat}'")
+
+    if store_code:
+        safe_store = store_code.replace("'", "''").upper()
+        where_parts.append(f"Codigo_OficinaVta = '{safe_store}'")
 
     # Excluir materiales de tipo servicio si PUNTO_VENTA está disponible
     excl_clause = await build_material_exclusion_clause(material_col="MaterialCodigo")
@@ -445,6 +450,7 @@ async def get_product_sales_ranking(
         "label": label,
         "top_n": top_n,
         "category_filter": category,
+        "store_filter": store_code,
         "products": [
             {
                 "rank": i + 1,
@@ -471,7 +477,8 @@ async def get_product_sales_ranking(
 # ─────────────────────────────────────────────────────────────────────────────
 async def get_top_margin_products(period: Optional[str] = None,
                                    top_n: int = 10,
-                                   category: Optional[str] = None) -> Dict[str, Any]:
+                                   category: Optional[str] = None,
+                                   store_code: Optional[str] = None) -> Dict[str, Any]:
     """
     Top productos por margen de utilidad real.
     Mínimo 5 documentos para filtrar outliers.
@@ -490,6 +497,10 @@ async def get_top_margin_products(period: Optional[str] = None,
     if category:
         safe_cat = category.replace("'", "''")
         where_parts.append(f"GrupoMaterialDirectorio = '{safe_cat}'")
+
+    if store_code:
+        safe_store = store_code.replace("'", "''").upper()
+        where_parts.append(f"Codigo_OficinaVta = '{safe_store}'")
 
     # Excluir servicios si PUNTO_VENTA disponible
     excl_clause = await build_material_exclusion_clause(material_col="MaterialCodigo")

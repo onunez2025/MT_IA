@@ -38,6 +38,7 @@ from tools.analytics_tools import (
     get_product_sales_ranking,
 )
 from tools.report_tools import generate_forecast_report
+from tools.store_tools import get_sales_by_store, get_store_detail
 from guards.rbac import validate_rbac
 from guards.audit import log_audit_entry
 from guards.sanitization import sanitize_user_input
@@ -66,6 +67,9 @@ TOOL_REGISTRY: Dict[str, Any] = {
     "get_top_margin_products":    get_top_margin_products,
     "get_product_sales_ranking":  get_product_sales_ranking,
     "generate_forecast_report":   generate_forecast_report,
+    # Tiendas/Oficinas de venta
+    "get_sales_by_store":         get_sales_by_store,
+    "get_store_detail":           get_store_detail,
 }
 
 # ── Saludos y mensajes sin intención de consulta ──────────────────────────────

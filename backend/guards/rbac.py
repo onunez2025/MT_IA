@@ -25,6 +25,9 @@ _JEFE_TOOLS = _VENDEDOR_TOOLS + [
     "get_top_margin_products",
     "get_product_sales_ranking",
     "generate_forecast_report",
+    # Herramientas de tienda/oficina de venta
+    "get_sales_by_store",
+    "get_store_detail",
 ]
 
 ROLE_PERMISSIONS: Dict[str, List[str]] = {

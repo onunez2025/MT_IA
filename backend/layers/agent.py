@@ -27,7 +27,7 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
-MAX_ROUNDS = 5          # Máximo de rondas de tool-calls por request
+MAX_ROUNDS = 7          # Máximo de rondas de tool-calls por request
 LLM_TIMEOUT = 45.0      # Segundos por llamada a DeepSeek (generosa: puede tener que sintetizar mucho)
 
 # ── Lazy client ────────────────────────────────────────────────────────────────
@@ -293,6 +293,14 @@ TOOL_SCHEMAS = [
                         "type": "integer",
                         "description": "Cuántos productos mostrar. Default: 10."
                     },
+                    "store_code": {
+                        "type": "string",
+                        "description": (
+                            "Código de tienda/oficina de venta (opcional). "
+                            "Ej: 'SH01', 'ME10', 'SH12'. "
+                            "Usar cuando pidan margen por tienda específica."
+                        )
+                    },
                 },
             },
         },
@@ -331,7 +339,15 @@ TOOL_SCHEMAS = [
                     "category": {
                         "type": "string",
                         "description": "Filtrar por categoría/grupo de material (opcional)."
-                    }
+                    },
+                    "store_code": {
+                        "type": "string",
+                        "description": (
+                            "Código de tienda/oficina de venta (opcional). "
+                            "Ej: 'SH01', 'ME10', 'SH04'. "
+                            "Usar cuando pidan productos por tienda específica."
+                        )
+                    },
                 },
             },
         },
@@ -348,6 +364,68 @@ TOOL_SCHEMAS = [
             "parameters": {
                 "type": "object",
                 "properties": {},
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_sales_by_store",
+            "description": (
+                "Ranking de todas las tiendas/oficinas de venta ordenadas por ventas. "
+                "Muestra ventas, utilidad, margen, participación %, documentos y clientes por tienda. "
+                "Usar cuando pregunten: ¿cuánto vendió cada tienda? ¿qué tienda vende más? "
+                "¿cómo están las tiendas? ranking de oficinas de venta, desempeño por sucursal."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "period": {
+                        "type": "string",
+                        "description": (
+                            "Período YYYY-MM (mes) o YYYY (año). "
+                            "Sin valor = acumulado anual. Ej: '2026-07' o '2026'."
+                        )
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "Número de tiendas a mostrar. Default: 20."
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_store_detail",
+            "description": (
+                "Análisis detallado de UNA tienda específica: resumen de ventas, top 5 productos "
+                "y top 5 clientes de esa tienda. "
+                "Usar cuando pregunten por una tienda específica: "
+                "'¿cómo le fue a SOLE Trujillo?', '¿cuáles son los productos más vendidos en SH01?', "
+                "'detalle de la tienda ME10', '¿cómo está la tienda de Callao?'. "
+                "REQUIERE el código de tienda (ej: SH01, ME10, SH04, SH12)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "store_code": {
+                        "type": "string",
+                        "description": (
+                            "Código de la oficina de venta. Ej: 'SH01' (SOLE Lima), "
+                            "'ME10' (OF. MT CALLAO), 'SH04' (SOLE Trujillo), 'SH12' (E-COMMERCE). "
+                            "OBLIGATORIO."
+                        )
+                    },
+                    "period": {
+                        "type": "string",
+                        "description": (
+                            "Período YYYY-MM o YYYY. Sin valor = año actual acumulado."
+                        )
+                    },
+                },
+                "required": ["store_code"],
             },
         },
     },
@@ -389,7 +467,6 @@ dar contexto útil para la toma de decisiones.
 
 ## Limitaciones del sistema (lo que NO puedes responder con datos)
 - Forecast a nivel de producto individual (solo existe a nivel total de ventas)
-- Ventas desglosadas por sucursal o tienda específica (Callao, Lima Norte, etc.)
 - Comparación contra competencia
 - Precios de productos o cotizaciones
 - Información de proveedores
