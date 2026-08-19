@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>SOLE AI — MT Industrial</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app">
+
+        <!-- ─── Header ─────────────────────────────────────────────────── -->
+        <header class="header">
+            <div class="header-left">
+                <div class="logo">⚙️</div>
+                <div class="header-text">
+                    <span class="app-name">SOLE AI</span>
+                    <span class="company">MT Industrial</span>
+                </div>
+            </div>
+            <div class="header-right">
+                <label class="role-label" for="roleSelect">Rol:</label>
+                <select id="roleSelect" class="role-select" title="Rol de usuario (modo desarrollo)">
+                    <option value="Vendedor">Vendedor</option>
+                    <option value="Jefe_Ventas" selected>Jefe de Ventas</option>
+                    <option value="Gerente">Gerente</option>
+                    <option value="Admin">Admin</option>
+                </select>
+            </div>
+        </header>
+
+        <!-- ─── Mensajes ────────────────────────────────────────────────── -->
+        <div class="chat-container" id="chatContainer">
+
+            <!-- Mensaje de bienvenida -->
+            <div class="message ai-message" id="welcomeMsg">
+                <div class="avatar">🤖</div>
+                <div class="bubble">
+                    <p>¡Hola! Soy <strong>SOLE</strong>, tu asistente de ventas MT&nbsp;Industrial.</p>
+                    <p class="examples-title">Puedes preguntarme cosas como:</p>
+                    <ul class="examples">
+                        <li>¿Cuánto vendimos este mes?</li>
+                        <li>¿Cuánto falta para la meta de agosto?</li>
+                        <li>¿Qué clientes están inactivos?</li>
+                        <li>¿Cuáles son los productos con mejor margen?</li>
+                        <li>Tendencia de ventas últimos 6 meses</li>
+                    </ul>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ─── Input ───────────────────────────────────────────────────── -->
+        <div class="input-area">
+            <form id="chatForm" class="chat-form" autocomplete="off">
+                <input
+                    type="text"
+                    id="questionInput"
+                    class="question-input"
+                    placeholder="Escribe tu pregunta…"
+                    maxlength="400"
+                    autofocus
+                >
+                <button type="submit" id="sendBtn" class="send-btn" title="Enviar">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                        <path d="M3.478 2.405a.75.75 0 0 0-.926.94l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.405Z"/>
+                    </svg>
+                </button>
+            </form>
+            <p class="disclaimer">SOLE AI puede cometer errores. Verifica información importante.</p>
+        </div>
+
+    </div>
+    <script src="/static/app.js"></script>
+</body>
+</html>

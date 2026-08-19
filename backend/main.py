@@ -1,7 +1,10 @@
 # backend/main.py
 from fastapi import FastAPI, Header, HTTPException, Depends
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional
+from pathlib import Path
 from config import settings
 from models.query import QueryResponse
 from models.user import User
@@ -94,6 +97,18 @@ async def list_tools(user: User = Depends(get_current_user)):
     """List tools available to the current user."""
     from guards.rbac import get_allowed_tools
     return {"user_id": user.user_id, "allowed_tools": get_allowed_tools(user.roles)}
+
+
+# ── Frontend estático ────────────────────────────────────────────
+# Servir archivos CSS/JS en /static/*
+_static_dir = Path(__file__).parent / "static"
+if _static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+
+    @app.get("/", include_in_schema=False)
+    async def serve_frontend():
+        """Sirve el chat web en la raíz."""
+        return FileResponse(str(_static_dir / "index.html"))
 
 
 if __name__ == "__main__":
