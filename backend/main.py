@@ -24,23 +24,43 @@ entra = EntraConnector()
 
 class ChatRequest(BaseModel):
     question: str
+    # Campos opcionales para testing en modo desarrollo (ignorados en producción)
+    user_id: Optional[str] = None
+    roles: Optional[list] = None
 
 
-async def get_current_user(authorization: str = Header(default="")) -> User:
+async def get_current_user(
+    request_body: ChatRequest = None,
+    authorization: str = Header(default=""),
+) -> User:
     """Extract and validate user from Entra ID token."""
     token = authorization.replace("Bearer ", "").strip()
-    if not token:
-        # Fase 0 dev fallback: return demo user if no token
-        return User(
-            user_id="dev-user",
-            email="dev@mtindustrial.com",
-            roles=["Jefe_Ventas"],
-            is_admin=False,
-        )
-    user = await entra.validate_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Token inválido o expirado")
-    return user
+
+    # Producción: validar token de Entra ID
+    if token:
+        user = await entra.validate_token(token)
+        if not user:
+            raise HTTPException(status_code=401, detail="Token inválido o expirado")
+        return user
+
+    # Desarrollo: si se pasan user_id/roles en el body, úsalos para testing
+    if settings.environment in ("development", "dev") and request_body:
+        if request_body.user_id and request_body.roles is not None:
+            return User(
+                user_id=request_body.user_id,
+                email=f"{request_body.user_id}@mtindustrial.com",
+                roles=request_body.roles,
+                is_admin="Admin" in request_body.roles,
+            )
+
+    # Fallback genérico para dev sin token
+    return User(
+        user_id="dev-user",
+        email="dev@mtindustrial.com",
+        roles=["Jefe_Ventas"],
+        is_admin=False,
+    )
+
 
 
 @app.on_event("startup")
@@ -59,9 +79,10 @@ async def health():
 @app.post("/api/chat", response_model=QueryResponse)
 async def chat(
     request: ChatRequest,
-    user: User = Depends(get_current_user),
+    authorization: str = Header(default=""),
 ):
     """Main chat endpoint — processes natural language questions."""
+    user = await get_current_user(request_body=request, authorization=authorization)
     return await orchestrator.process_question(
         user=user,
         question=request.question,

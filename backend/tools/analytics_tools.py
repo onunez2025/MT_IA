@@ -240,6 +240,15 @@ async def get_monthly_trend(months: int = 6,
         safe_r = region.replace("'", "''")
         where_region = f"AND REGION = '{safe_r}'"
 
+    # Excluir el mes en curso si estamos antes del día 25 (datos incompletos)
+    now = datetime.now()
+    if now.day < 25:
+        exclude_current = (
+            f"AND NOT (Anio = {now.year} AND MesNumero = {now.month})"
+        )
+    else:
+        exclude_current = ""
+
     rows = await azure_sql.query_readonly(f"""
         SELECT TOP {months}
             Anio, MesNumero, MesNombre,
@@ -248,7 +257,7 @@ async def get_monthly_trend(months: int = 6,
             COUNT(DISTINCT Documento)   AS documentos,
             COUNT(DISTINCT SolicitanteCodigo) AS clientes
         FROM SAP.WEB_FORECAST_VENTAS_REPORTE_ACTIVIDAD
-        WHERE 1=1 {where_region}
+        WHERE 1=1 {where_region} {exclude_current}
         GROUP BY Anio, MesNumero, MesNombre
         ORDER BY Anio DESC, MesNumero DESC
     """)

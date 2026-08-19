@@ -38,7 +38,15 @@ async def generate_forecast_report(year: int = 2026,
     except ImportError:
         return {"error": "openpyxl no está instalado. Ejecuta: pip install openpyxl"}
 
-    # ── 1. Historial mensual (últimos 8 meses del año anterior y año actual) ──
+    # Excluir mes en curso si está incompleto (antes del día 25)
+    now_dt = datetime.now()
+    exclude_current = ""
+    if now_dt.day < 25:
+        exclude_current = (
+            f"AND NOT (Anio = {now_dt.year} AND MesNumero = {now_dt.month})"
+        )
+
+    # ── 1. Historial mensual (años anterior y actual, excluyendo mes incompleto) ──
     hist = await azure_sql.query_readonly(f"""
         SELECT Anio, MesNumero, MesNombre,
                SUM(ImporteSoles)   AS ventas,
@@ -46,16 +54,17 @@ async def generate_forecast_report(year: int = 2026,
         FROM SAP.WEB_FORECAST_VENTAS_REPORTE_ACTIVIDAD
         WHERE (Anio = {year} OR Anio = {year - 1})
           AND ImporteSoles > 0
+          {exclude_current}
         GROUP BY Anio, MesNumero, MesNombre
         ORDER BY Anio, MesNumero
     """)
 
-    # Últimos 3 meses del año actual (base para proyección)
+    # Últimos 3 meses completos del año actual (base para proyección)
     year_data = [r for r in hist if int(r["Anio"]) == year]
     year_data.sort(key=lambda r: int(r["MesNumero"]))
     last3 = year_data[-3:] if len(year_data) >= 3 else year_data
 
-    # Tendencia lineal simple
+    # Tendencia lineal simple sobre meses completos
     if len(last3) >= 2:
         vals = [float(r["ventas"]) for r in last3]
         avg_growth = (vals[-1] - vals[0]) / max(len(vals) - 1, 1)
