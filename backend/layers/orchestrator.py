@@ -497,7 +497,14 @@ class Orchestrator:
         # 2. Select tool — LLM primero, keywords como fallback
         routing_method = "llm"
         selected = await llm_select_tool(clean_question)
+
         if selected is None:
+            # LLM no disponible (sin API key o error de red) → keywords
+            routing_method = "keyword"
+            selected = _select_tool(clean_question)
+        elif selected.get("tool") is None:
+            # LLM dice explícitamente que la pregunta está fuera de scope
+            # → intentar keywords por si acaso, luego "no entendí"
             routing_method = "keyword"
             selected = _select_tool(clean_question)
 
