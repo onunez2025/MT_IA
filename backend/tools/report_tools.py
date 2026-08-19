@@ -12,8 +12,13 @@ from connectors.sql_connector import azure_sql
 
 logger = logging.getLogger(__name__)
 
-# Directorio destino para archivos generados
-_OUTPUT_DIR = r"C:\Users\onunez\OneDrive - MT INDUSTRIAL S.A.C\Escritorio\TI\MT_IA"
+# Directorio destino para archivos generados.
+# En producción Docker: /tmp (o el volumen montado si se configura FORECAST_OUTPUT_DIR).
+# En local Windows: usar la variable de entorno FORECAST_OUTPUT_DIR.
+_OUTPUT_DIR = os.getenv(
+    "FORECAST_OUTPUT_DIR",
+    "/tmp"   # fallback para Docker/EasyPanel
+)
 
 
 async def generate_forecast_report(year: int = 2026,
@@ -327,19 +332,32 @@ async def generate_forecast_report(year: int = 2026,
     # ── 6. Guardar ──
     filename = f"Forecast_{target_month_name}_{year}.xlsx"
     filepath = os.path.join(_OUTPUT_DIR, filename)
+    file_saved = False
     try:
+        os.makedirs(_OUTPUT_DIR, exist_ok=True)
         wb.save(filepath)
+        file_saved = True
+        logger.info(f"Forecast report saved: {filepath}")
     except PermissionError:
         # Archivo en uso — agregar timestamp al nombre
-        ts = datetime.now().strftime("%H%M%S")
-        filename = f"Forecast_{target_month_name}_{year}_{ts}.xlsx"
-        filepath = os.path.join(_OUTPUT_DIR, filename)
-        wb.save(filepath)
-    logger.info(f"Forecast report saved: {filepath}")
+        try:
+            ts = datetime.now().strftime("%H%M%S")
+            filename = f"Forecast_{target_month_name}_{year}_{ts}.xlsx"
+            filepath = os.path.join(_OUTPUT_DIR, filename)
+            wb.save(filepath)
+            file_saved = True
+            logger.info(f"Forecast report saved (retry): {filepath}")
+        except Exception as e:
+            logger.warning(f"Could not save forecast file: {e}")
+            filepath = None
+    except Exception as e:
+        logger.warning(f"Could not save forecast file: {e}")
+        filepath = None
 
     return {
-        "file_path": filepath,
-        "filename": filename,
+        "file_path": filepath if file_saved else None,
+        "filename": filename if file_saved else None,
+        "file_saved": file_saved,
         "period": f"{year}-{month:02d}",
         "target_month": target_month_name,
         "forecast_conservador": forecast_conservador,

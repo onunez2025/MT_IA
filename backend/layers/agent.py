@@ -159,8 +159,10 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "generate_forecast_report",
             "description": (
-                "Genera un reporte Excel con proyección (forecast) de ventas para un mes FUTURO. "
-                "Usar cuando pidan proyecciones para septiembre, octubre, noviembre, diciembre 2026 en adelante."
+                "Calcula la proyección (forecast) de ventas para un mes FUTURO usando tendencia de los últimos meses. "
+                "Devuelve tres escenarios: conservador, base y optimista en soles. "
+                "Usar cuando pidan proyecciones para septiembre, octubre, noviembre, diciembre 2026 en adelante. "
+                "Presentar los tres escenarios con sus montos al usuario en el chat."
             ),
             "parameters": {
                 "type": "object",
