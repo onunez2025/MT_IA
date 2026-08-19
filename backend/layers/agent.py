@@ -300,11 +300,50 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "get_product_sales_ranking",
+            "description": (
+                "Ranking de productos por ventas en soles para un período. "
+                "Puede mostrar los MÁS vendidos (sort_order='DESC') O los MENOS vendidos (sort_order='ASC'). "
+                "Usar para: ¿qué producto se vendió menos? ¿cuál fue el producto menos vendido? "
+                "¿cuáles son los productos que más se venden? ¿qué productos tienen menor salida? "
+                "PREFERIR esta herramienta sobre get_inventory_by_sales cuando se pida por período específico."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "period": {
+                        "type": "string",
+                        "description": "Período YYYY-MM (mes) o YYYY (año). Ej: '2026-07'."
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "Cuántos productos mostrar. Default: 10."
+                    },
+                    "sort_order": {
+                        "type": "string",
+                        "enum": ["DESC", "ASC"],
+                        "description": (
+                            "'DESC' para los más vendidos (mayor ventas primero). "
+                            "'ASC' para los menos vendidos (menor ventas primero). "
+                            "Usar 'ASC' cuando pregunten por 'menos vendido', 'menor rotación', 'menor salida'."
+                        )
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Filtrar por categoría/grupo de material (opcional)."
+                    }
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_inventory_by_sales",
             "description": (
-                "Materiales y productos con MAYOR rotación de ventas (los más vendidos por cantidad entregada). "
-                "Usar para: productos más vendidos, mayor rotación, inventario general. "
-                "NO usar si preguntan por el producto MENOS vendido o menor rotación."
+                "Materiales con mayor cantidad entregada históricamente (sin filtro de período). "
+                "Usar solo cuando no se especifique período. "
+                "Para consultas por período específico, preferir get_product_sales_ranking."
             ),
             "parameters": {
                 "type": "object",
@@ -349,8 +388,7 @@ dar contexto útil para la toma de decisiones.
 - 🤝 Si el usuario pregunta por un cliente sin dar su código SAP, pídele el código (7-10 dígitos).
 
 ## Limitaciones del sistema (lo que NO puedes responder con datos)
-- Producto o material MENOS vendido / menor rotación
-- Forecast a nivel de producto individual
+- Forecast a nivel de producto individual (solo existe a nivel total de ventas)
 - Ventas desglosadas por sucursal o tienda específica (Callao, Lima Norte, etc.)
 - Comparación contra competencia
 - Precios de productos o cotizaciones

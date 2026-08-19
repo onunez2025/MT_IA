@@ -23,6 +23,7 @@ _JEFE_TOOLS = _VENDEDOR_TOOLS + [
     "get_sales_by_channel",
     "get_monthly_trend",
     "get_top_margin_products",
+    "get_product_sales_ranking",
     "generate_forecast_report",
 ]
 

@@ -379,6 +379,88 @@ async def get_new_customers(period: str,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 6b. get_product_sales_ranking — Productos más o menos vendidos por período
+# ─────────────────────────────────────────────────────────────────────────────
+async def get_product_sales_ranking(
+    period: Optional[str] = None,
+    top_n: int = 10,
+    sort_order: str = "DESC",          # "DESC" = más vendidos, "ASC" = menos vendidos
+    category: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Ranking de productos por ventas en soles para un período.
+
+    - sort_order="DESC" → los más vendidos (mayor importe).
+    - sort_order="ASC"  → los menos vendidos (menor importe en el período).
+
+    Fuente: SAP.WEB_FORECAST_VENTAS_REPORTE_ACTIVIDAD
+    """
+    safe_order = "DESC" if sort_order.upper() != "ASC" else "ASC"
+    top_n = max(1, min(int(top_n), 100))
+
+    where_parts = ["ImporteSoles IS NOT NULL", "MaterialCodigo IS NOT NULL", "MaterialCodigo != ''"]
+
+    if period:
+        if "-" in period:
+            year_s, month_s = period.split("-")
+            where_parts.append(f"Anio = {int(year_s)} AND MesNumero = {int(month_s)}")
+        else:
+            where_parts.append(f"Anio = {int(period)}")
+
+    if category:
+        safe_cat = category.replace("'", "''")
+        where_parts.append(f"GrupoMaterialDirectorio = '{safe_cat}'")
+
+    where_clause = "WHERE " + " AND ".join(where_parts)
+
+    # Para menos vendido: sin filtro mínimo de documentos para capturar hasta productos
+    # que solo se vendieron una vez.
+    rows = await azure_sql.query_readonly(f"""
+        SELECT TOP {top_n}
+            MaterialCodigo                          AS codigo,
+            MaterialNombre                          AS nombre,
+            GrupoMaterialDirectorio                 AS categoria,
+            SUM(ImporteSoles)                       AS ventas,
+            SUM(Cantidad)                           AS unidades,
+            SUM(UtilidadSoles)                      AS utilidad,
+            COUNT(DISTINCT Documento)               AS documentos,
+            COUNT(DISTINCT SolicitanteCodigo)       AS clientes
+        FROM SAP.WEB_FORECAST_VENTAS_REPORTE_ACTIVIDAD
+        {where_clause}
+        GROUP BY MaterialCodigo, MaterialNombre, GrupoMaterialDirectorio
+        ORDER BY ventas {safe_order}
+    """)
+
+    label = "menos vendidos" if safe_order == "ASC" else "más vendidos"
+
+    return {
+        "period": period or "YTD",
+        "sort_order": safe_order,
+        "label": label,
+        "top_n": top_n,
+        "category_filter": category,
+        "products": [
+            {
+                "rank": i + 1,
+                "codigo": r.get("codigo"),
+                "nombre": r.get("nombre"),
+                "categoria": r.get("categoria"),
+                "ventas": round(float(r.get("ventas") or 0), 2),
+                "unidades": round(float(r.get("unidades") or 0), 0),
+                "utilidad": round(float(r.get("utilidad") or 0), 2),
+                "margen_pct": round(
+                    float(r.get("utilidad") or 0) / float(r.get("ventas") or 1) * 100, 1
+                ),
+                "documentos": int(r.get("documentos") or 0),
+                "clientes": int(r.get("clientes") or 0),
+            }
+            for i, r in enumerate(rows)
+        ],
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 6. get_top_margin_products — Productos con mejor margen
 # ─────────────────────────────────────────────────────────────────────────────
 async def get_top_margin_products(period: Optional[str] = None,

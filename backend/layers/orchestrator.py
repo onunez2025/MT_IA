@@ -20,7 +20,6 @@ from typing import Dict, Any, Optional, List
 from models.query import QueryResponse
 from models.user import User
 from layers.agent import run_agent, AgentResult
-from layers.llm_router import llm_select_tool          # Solo para fallback keyword
 from tools.sales_tools import (
     get_sales_summary,
     get_sales_targets,
@@ -36,6 +35,7 @@ from tools.analytics_tools import (
     get_monthly_trend,
     get_new_customers,
     get_top_margin_products,
+    get_product_sales_ranking,
 )
 from tools.report_tools import generate_forecast_report
 from guards.rbac import validate_rbac
@@ -58,13 +58,14 @@ TOOL_REGISTRY: Dict[str, Any] = {
     "get_sales_performance":  get_sales_performance,
     "get_inventory_by_sales": get_inventory_by_sales,
     # Fase 0+ nuevas
-    "get_gap_to_target":        get_gap_to_target,
-    "get_inactive_customers":   get_inactive_customers,
-    "get_sales_by_channel":     get_sales_by_channel,
-    "get_monthly_trend":        get_monthly_trend,
-    "get_new_customers":        get_new_customers,
-    "get_top_margin_products":  get_top_margin_products,
-    "generate_forecast_report": generate_forecast_report,
+    "get_gap_to_target":          get_gap_to_target,
+    "get_inactive_customers":     get_inactive_customers,
+    "get_sales_by_channel":       get_sales_by_channel,
+    "get_monthly_trend":          get_monthly_trend,
+    "get_new_customers":          get_new_customers,
+    "get_top_margin_products":    get_top_margin_products,
+    "get_product_sales_ranking":  get_product_sales_ranking,
+    "generate_forecast_report":   generate_forecast_report,
 }
 
 # ── Saludos y mensajes sin intención de consulta ──────────────────────────────
