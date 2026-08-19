@@ -10,6 +10,7 @@ from models.query import QueryResponse
 from models.user import User
 from layers.orchestrator import Orchestrator
 from connectors.entra_connector import EntraConnector
+from api.openai_compat import router as openai_router
 import logging
 
 logging.basicConfig(level=settings.log_level)
@@ -20,6 +21,9 @@ app = FastAPI(
     version="0.1.0",
     description="Conversational AI for sales data queries"
 )
+
+# Endpoints compatibles con OpenAI (para Open WebUI y otros clientes)
+app.include_router(openai_router)
 
 orchestrator = Orchestrator()
 entra = EntraConnector()
