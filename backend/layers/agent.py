@@ -20,7 +20,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 from openai import AsyncOpenAI
 
@@ -1077,3 +1077,168 @@ async def run_agent(
         tools_used=tools_called,
         error="MAX_ROUNDS exceeded",
     )
+
+
+# ── Mensajes de estado para streaming ─────────────────────────────────────────
+#
+# Aparecen en el chat MIENTRAS el agente ejecuta cada tool.
+# El usuario ve progreso en tiempo real en vez del punto blanco.
+
+_TOOL_STATUS: Dict[str, str] = {
+    "search_customer_by_name":   "🔍 Buscando cliente en la base de datos...",
+    "get_customer_insights":     "📋 Consultando historial del cliente...",
+    "get_customer_credit":       "💳 Consultando límite de crédito...",
+    "get_customer_price":        "🏷️ Consultando precios especiales...",
+    "get_customer_contact":      "📞 Consultando datos de contacto...",
+    "get_open_receivables":      "📑 Consultando cuentas por cobrar...",
+    "get_clients_by_store":      "🏪 Consultando cartera de tienda...",
+    "get_service_orders":        "🔧 Consultando órdenes de servicio técnico...",
+    "get_delivery_status":       "🚚 Consultando estado de entregas...",
+    "get_inventory_value":       "📦 Consultando valorización de inventario...",
+    "get_nps_summary":           "⭐ Consultando encuestas de satisfacción...",
+    "get_stock_by_product":      "📦 Consultando stock del producto...",
+    "get_pending_orders":        "📋 Consultando pedidos pendientes...",
+    "get_returns_summary":       "🔄 Consultando devoluciones...",
+    "get_sales_summary":         "📊 Consultando resumen de ventas...",
+    "get_sales_targets":         "🎯 Consultando metas de venta...",
+    "get_sales_forecast":        "📈 Consultando forecast...",
+    "get_sales_performance":     "🏆 Consultando rendimiento de vendedores...",
+    "get_customer_insights":     "📋 Consultando historial del cliente...",
+    "get_inventory_by_sales":    "📦 Consultando inventario...",
+    "get_gap_to_target":         "📊 Calculando brecha a la meta...",
+    "get_inactive_customers":    "😴 Buscando clientes inactivos...",
+    "get_new_customers":         "🌟 Consultando nuevos clientes...",
+    "get_top_margin_products":   "💰 Consultando productos con mejor margen...",
+    "get_product_sales_ranking": "🏅 Consultando ranking de productos...",
+    "get_monthly_trend":         "📈 Consultando tendencia mensual...",
+    "get_sales_by_channel":      "📢 Consultando ventas por canal...",
+    "get_sales_by_store":        "🏪 Consultando ventas por tienda...",
+    "get_store_detail":          "🏪 Consultando detalle de tienda...",
+    "generate_forecast_report":  "📊 Generando reporte de forecast...",
+}
+
+
+async def run_agent_streaming(
+    question: str,
+    tool_registry: Dict[str, Any],
+    allowed_tools: Optional[List[str]] = None,
+) -> AsyncGenerator[Tuple[str, str], None]:
+    """
+    Versión streaming del agente agéntico.
+
+    Emite tuplas (tipo, contenido) durante la ejecución:
+      ("status",   "🔍 Buscando cliente...")  — antes de ejecutar cada tool
+      ("response", "El crédito disponible...") — respuesta final del LLM
+      ("error",    "mensaje")                  — si falla algo crítico
+
+    Permite al frontend mostrar progreso en tiempo real mientras el agente
+    consulta las bases de datos, eliminando el "punto blanco" de espera.
+    """
+    client = _get_client()
+    if not client:
+        yield ("error", "El sistema de IA no está configurado. Contacta al administrador.")
+        return
+
+    # Filtrar schemas por RBAC
+    if allowed_tools is not None:
+        available_schemas = [
+            s for s in TOOL_SCHEMAS
+            if s["function"]["name"] in allowed_tools
+        ]
+    else:
+        available_schemas = TOOL_SCHEMAS
+
+    messages = [
+        {"role": "system", "content": _build_system_prompt()},
+        {"role": "user", "content": question},
+    ]
+
+    tools_called: List[str] = []
+
+    for round_num in range(MAX_ROUNDS):
+        logger.info(f"[AgentStream] Round {round_num + 1}/{MAX_ROUNDS}")
+
+        try:
+            api_response = await client.chat.completions.create(
+                model="deepseek-chat",
+                messages=messages,
+                tools=available_schemas or None,
+                tool_choice="auto",
+                temperature=0.3,
+                max_tokens=1500,
+            )
+        except Exception as exc:
+            logger.error(f"[AgentStream] DeepSeek API error: {exc}")
+            yield ("error", "Ocurrió un error conectando con el sistema de IA. Intenta de nuevo.")
+            return
+
+        choice = api_response.choices[0]
+        finish_reason = choice.finish_reason
+
+        if finish_reason == "tool_calls":
+            tool_calls = choice.message.tool_calls or []
+            messages.append(choice.message)
+
+            parsed: List[tuple] = []
+            for tc in tool_calls:
+                try:
+                    fn_args = json.loads(tc.function.arguments or "{}")
+                except json.JSONDecodeError:
+                    fn_args = {}
+                parsed.append((tc, tc.function.name, fn_args))
+
+                # Emitir status ANTES de ejecutar la tool
+                status_msg = _TOOL_STATUS.get(
+                    tc.function.name,
+                    f"⚙️ Consultando {tc.function.name.replace('_', ' ')}..."
+                )
+                yield ("status", status_msg)
+                logger.info(f"[AgentStream] → {tc.function.name}({fn_args})")
+
+            # Ejecutar tools en paralelo
+            async def _run_tool_stream(tc, fn_name: str, fn_args: dict) -> tuple:
+                if fn_name not in tool_registry:
+                    result = {"error": f"Herramienta '{fn_name}' no existe."}
+                elif allowed_tools is not None and fn_name not in allowed_tools:
+                    result = {"error": f"Sin permiso para '{fn_name}'."}
+                else:
+                    cache_key = f"{fn_name}:{json.dumps(fn_args, sort_keys=True, default=str)}"
+                    cached = None if fn_name in _NO_CACHE_TOOLS else _TOOL_CACHE.get(cache_key)
+                    if cached is not None:
+                        tools_called.append(fn_name)
+                        result = cached
+                    else:
+                        try:
+                            raw = await tool_registry[fn_name](**fn_args)
+                            tools_called.append(fn_name)
+                            if fn_name not in _NO_CACHE_TOOLS:
+                                _TOOL_CACHE.set(cache_key, raw)
+                            result = raw
+                        except Exception as exc:
+                            logger.error(f"[AgentStream] Tool {fn_name} error: {exc}")
+                            result = {"error": f"Error al ejecutar {fn_name}: {exc}"}
+                return tc.id, json.dumps(result, ensure_ascii=False, default=str)
+
+            results = await asyncio.gather(*[_run_tool_stream(tc, fn, args) for tc, fn, args in parsed])
+
+            for tool_call_id, result_json in results:
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call_id,
+                    "content": result_json,
+                })
+            continue
+
+        # Respuesta final
+        final_text = (choice.message.content or "").strip()
+        if not final_text:
+            final_text = "No pude generar una respuesta. Por favor reformula tu pregunta."
+
+        logger.info(
+            f"[AgentStream] Done after {round_num + 1} rounds. "
+            f"Tools: {tools_called}. Chars: {len(final_text)}"
+        )
+        yield ("response", final_text)
+        return
+
+    yield ("error", "Alcancé el límite de consultas. Por favor reformula tu pregunta.")

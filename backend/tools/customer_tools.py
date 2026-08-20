@@ -95,31 +95,55 @@ async def search_customer_by_name(name: str, limit: int = 10) -> Dict[str, Any]:
     if not words:
         return _fmt_clients([], name, "sin_resultados")
 
-    word_conditions = " OR ".join(
-        f"VC_solicitante_razon_social LIKE '%{w}%'" for w in words
-    )
-
-    # Para la estrategia fonética, también intentamos el SOUNDEX de la primera palabra
-    # que tenga ≥4 chars (SQL Server nativo, sin dependencias externas)
-    primary_word = next((w for w in words if len(w) >= 4), words[0])
-    phonetic_cond = (
-        f"DIFFERENCE(VC_solicitante_razon_social, '{primary_word}') >= 3"
+    # ── Estrategia 3a: prefijos de 3 chars para captura amplia en SQL ─────────
+    # Ej: "RINAY" → prefix "RIN" → LIKE '%RIN%' → trae "RINNAI DEL PERU SAC" ✓
+    # Luego Python filtra por similitud a nivel de palabra individual.
+    prefixes = list({w[:3] for w in words if len(w) >= 3})
+    prefix_conds = " OR ".join(
+        f"VC_solicitante_razon_social LIKE '%{p}%'" for p in prefixes
     )
 
     candidates = await _query_clients(
-        where=f"({word_conditions} OR {phonetic_cond})",
-        top=limit * 5,   # traer más para filtrar y rankear en Python
+        where=f"({prefix_conds})",
+        top=limit * 5,   # traer más para filtrar en Python
     )
 
     if not candidates:
         return _fmt_clients([], name, "sin_resultados")
 
-    # Scoring con difflib: ratio de similitud entre el query y la razón social
-    def _score(r: dict) -> float:
-        rs = (r.get("razon_social") or "").upper()
-        return difflib.SequenceMatcher(None, upper, rs).ratio()
+    # ── Estrategia 3b: scoring palabra-a-palabra con difflib ─────────────────
+    # Compara el query contra CADA PALABRA del nombre de empresa por separado
+    # y toma el máximo. Así "RINAY" vs "RINNAI DEL PERU SAC":
+    #   "RINNAI" → SequenceMatcher ratio ≈ 0.73  ← mayor
+    #   "DEL"    → 0.22
+    #   "PERU"   → 0.22
+    #   "SAC"    → 0.10
+    # → max = 0.73 > umbral ✓ — pasa el filtro correctamente.
+    def _word_sim(query_u: str, company: str) -> float:
+        cwords = (company or "").upper().split()
+        if not cwords:
+            return 0.0
+        return max(
+            difflib.SequenceMatcher(None, query_u, cw).ratio()
+            for cw in cwords
+        )
 
-    top_scored = sorted(candidates, key=_score, reverse=True)[:limit]
+    # Usar la palabra más larga del query como referencia de similitud
+    ref_word = max(words, key=len)
+
+    filtered = [
+        r for r in candidates
+        if _word_sim(ref_word, r.get("razon_social") or "") >= 0.65
+    ]
+
+    if not filtered:
+        return _fmt_clients([], name, "sin_resultados")
+
+    top_scored = sorted(
+        filtered,
+        key=lambda r: _word_sim(ref_word, r.get("razon_social") or ""),
+        reverse=True,
+    )[:limit]
     return _fmt_clients(top_scored, name, "aproximado")
 
 

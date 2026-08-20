@@ -25,7 +25,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from models.user import User
-from layers.agent import run_agent
+from layers.agent import run_agent, run_agent_streaming
 from layers.orchestrator import TOOL_REGISTRY
 from guards.rbac import validate_rbac, ROLE_PERMISSIONS
 
@@ -98,25 +98,74 @@ def _make_chunk(content: str, finish_reason: Optional[str], req_id: str) -> str:
     return f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
 
 
+def _role_chunk(req_id: str) -> str:
+    """Primer chunk obligatorio: declara el role=assistant."""
+    return f"data: {json.dumps({'id': req_id, 'object': 'chat.completion.chunk', 'created': int(time.time()), 'model': 'sole-ai', 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
+
+
+async def _stream_agent(
+    question: str,
+    tool_registry: dict,
+    allowed_tools: list,
+    req_id: str,
+) -> AsyncGenerator[str, None]:
+    """
+    Streaming real del agente agéntico.
+
+    Emite:
+      1. Mensajes de estado inmediatamente cuando el agente llama una tool
+         → el usuario ve "🔍 Buscando cliente..." en vez del punto blanco
+      2. La respuesta final token por token (efecto de tipeo)
+
+    Formato SSE compatible con OpenAI / Open WebUI.
+    """
+    import re
+
+    # ── Primer chunk: declara el role ────────────────────────────────────────
+    yield _role_chunk(req_id)
+
+    status_lines: list[str] = []
+    got_response = False
+
+    async for event_type, content in run_agent_streaming(question, tool_registry, allowed_tools):
+        if event_type == "status":
+            # Emitir status inmediatamente como texto en cursiva
+            # Open WebUI lo renderiza en markdown → se ve como indicador de progreso
+            line = f"*{content}*\n"
+            status_lines.append(line)
+            yield _make_chunk(line, None, req_id)
+
+        elif event_type == "response":
+            got_response = True
+            # Separador visual si hubo líneas de status
+            if status_lines:
+                yield _make_chunk("\n", None, req_id)
+
+            # Emitir respuesta final token por token (efecto de tipeo)
+            tokens = re.split(r'(\s+)', content)
+            for token in tokens:
+                if token:
+                    yield _make_chunk(token, None, req_id)
+
+        elif event_type == "error":
+            if status_lines:
+                yield _make_chunk("\n", None, req_id)
+            yield _make_chunk(f"\n⚠️ {content}", None, req_id)
+
+    yield _make_chunk("", "stop", req_id)
+    yield "data: [DONE]\n\n"
+
+
 async def _stream_response(
     full_text: str,
     req_id: str,
 ) -> AsyncGenerator[str, None]:
-    """
-    Simula streaming dividiendo la respuesta en palabras.
-    Produce el efecto de "tipeo" que se ve en ChatGPT/Claude.
-    """
-    # Primer chunk: rol del assistant
-    yield f"data: {json.dumps({'id': req_id, 'object': 'chat.completion.chunk', 'created': int(time.time()), 'model': 'sole-ai', 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
-
-    # Dividir por palabras manteniendo espacios y saltos de línea
+    """Streaming simple para el fallback (respuesta ya calculada)."""
     import re
-    tokens = re.split(r'(\s+)', full_text)
-    for token in tokens:
+    yield _role_chunk(req_id)
+    for token in re.split(r'(\s+)', full_text):
         if token:
             yield _make_chunk(token, None, req_id)
-
-    # Último chunk: finish
     yield _make_chunk("", "stop", req_id)
     yield "data: [DONE]\n\n"
 
@@ -185,7 +234,22 @@ async def chat_completions(
         if validate_rbac(user.roles, t)
     ]
 
-    # Ejecutar agente
+    _sse_headers = {
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",   # Para Nginx / EasyPanel
+    }
+
+    # ── Streaming (modo principal) ─────────────────────────────────────────────
+    # El agente emite status + respuesta en tiempo real.
+    # Open WebUI muestra cada chunk conforme llega → no hay punto blanco.
+    if request.stream:
+        return StreamingResponse(
+            _stream_agent(question, TOOL_REGISTRY, allowed_tools, req_id),
+            media_type="text/event-stream",
+            headers=_sse_headers,
+        )
+
+    # ── Respuesta completa (no-streaming, fallback) ────────────────────────────
     try:
         agent_result = await run_agent(
             question=question,
@@ -197,20 +261,7 @@ async def chat_completions(
         raise HTTPException(status_code=500, detail=str(exc))
 
     response_text = agent_result.response or "No pude generar una respuesta."
-
-    # ── Streaming ─────────────────────────────────────────────────────────────
-    if request.stream:
-        return StreamingResponse(
-            _stream_response(response_text, req_id),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "X-Accel-Buffering": "no",   # Para Nginx en EasyPanel
-            },
-        )
-
-    # ── Respuesta completa (no-streaming) ─────────────────────────────────────
-    prompt_tokens   = len(question.split())
+    prompt_tokens     = len(question.split())
     completion_tokens = len(response_text.split())
 
     return {
@@ -220,10 +271,7 @@ async def chat_completions(
         "model": "sole-ai",
         "choices": [{
             "index": 0,
-            "message": {
-                "role": "assistant",
-                "content": response_text,
-            },
+            "message": {"role": "assistant", "content": response_text},
             "finish_reason": "stop",
         }],
         "usage": {
