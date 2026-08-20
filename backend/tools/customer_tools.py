@@ -111,33 +111,59 @@ async def search_customer_by_name(name: str, limit: int = 10) -> Dict[str, Any]:
     if not candidates:
         return _fmt_clients([], name, "sin_resultados")
 
-    # ── Estrategia 3b: scoring palabra-a-palabra con difflib ─────────────────
-    # Compara el query contra CADA PALABRA del nombre de empresa por separado
-    # y toma el máximo. Así "RINAY" vs "RINNAI DEL PERU SAC":
-    #   "RINNAI" → SequenceMatcher ratio ≈ 0.73  ← mayor
-    #   "DEL"    → 0.22
-    #   "PERU"   → 0.22
-    #   "SAC"    → 0.10
-    # → max = 0.73 > umbral ✓ — pasa el filtro correctamente.
+    # ── Estrategia 3b: scoring palabra-a-palabra con bonus de prefijo ─────────
+    #
+    # Problema de SequenceMatcher puro: "RINAY" vs "IRINA" = 0.80 (falso positivo)
+    # porque comparten la subcadena "RINA". Solución: bonus +0.2 si los primeros
+    # 3 chars coinciden (prefijo), que es el caso de marcas/apellidos con mismo inicio.
+    #
+    #   "RINAY" vs "RINNAI": base 0.73 + prefijo "RIN"=="RIN" → +0.20 = 0.93 ✓
+    #   "RINAY" vs "IRINA" : base 0.80 + prefijo "RIN"≠"IRI"  → +0.00 = 0.80 ✗ (filtrado si <0.85)
+    #
+    # Umbral final ajustado a 0.85 para exigir prefijo + similitud alta.
     def _word_sim(query_u: str, company: str) -> float:
         cwords = (company or "").upper().split()
         if not cwords:
             return 0.0
-        return max(
-            difflib.SequenceMatcher(None, query_u, cw).ratio()
-            for cw in cwords
-        )
+        prefix = query_u[:3]
+        best = 0.0
+        for cw in cwords:
+            base = difflib.SequenceMatcher(None, query_u, cw).ratio()
+            # Bonus de prefijo: premia marcas/apellidos con mismo inicio
+            bonus = 0.20 if cw[:3] == prefix else 0.0
+            best = max(best, min(1.0, base + bonus))
+        return best
 
-    # Usar la palabra más larga del query como referencia de similitud
+    # Usar la palabra más larga del query como referencia
     ref_word = max(words, key=len)
 
     filtered = [
         r for r in candidates
-        if _word_sim(ref_word, r.get("razon_social") or "") >= 0.65
+        if _word_sim(ref_word, r.get("razon_social") or "") >= 0.85
     ]
 
+    # Si con umbral alto no hay resultados, bajar a 0.65 sin exigir prefijo
     if not filtered:
-        return _fmt_clients([], name, "sin_resultados")
+        def _word_sim_loose(query_u: str, company: str) -> float:
+            cwords = (company or "").upper().split()
+            if not cwords:
+                return 0.0
+            return max(
+                difflib.SequenceMatcher(None, query_u, cw).ratio()
+                for cw in cwords
+            )
+        filtered = [
+            r for r in candidates
+            if _word_sim_loose(ref_word, r.get("razon_social") or "") >= 0.65
+        ]
+        if not filtered:
+            return _fmt_clients([], name, "sin_resultados")
+        top_scored = sorted(
+            filtered,
+            key=lambda r: _word_sim_loose(ref_word, r.get("razon_social") or ""),
+            reverse=True,
+        )[:limit]
+        return _fmt_clients(top_scored, name, "aproximado")
 
     top_scored = sorted(
         filtered,

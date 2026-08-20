@@ -494,7 +494,12 @@ async def get_customer_credit(
     if not knka and not knkk:
         return {
             "customer_id": customer_id,
-            "error": f"No se encontró información de crédito para el cliente '{customer_id}'.",
+            "sin_datos": True,
+            "mensaje": (
+                f"El cliente '{customer_id}' no tiene línea de crédito registrada en SAP. "
+                "Puede ser un cliente de contado, un cliente nuevo sin límite asignado, "
+                "o el código SAP no existe en las tablas de crédito (KNKA/KNKK)."
+            ),
         }
 
     a = knka[0] if knka else {}
