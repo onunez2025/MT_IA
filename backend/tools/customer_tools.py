@@ -246,3 +246,96 @@ async def get_customer_insights(customer_id: str) -> Dict[str, Any]:
     query_cache.set(cache_key, result)
     logger.info(f"get_customer_insights({safe_id}) => {result['num_transactions']} transactions")
     return result
+
+
+async def get_customer_products(
+    customer_id: str,
+    period: Optional[str] = None,
+    top_n: int = 20,
+    group_by: str = "producto",   # "producto" | "categoria"
+) -> Dict[str, Any]:
+    """
+    Productos y categorías comprados por un cliente específico.
+    Útil para detectar oportunidades de cross-sell y upsell.
+
+    Solo incluye ventas reales (ZPEF/ZPEB/ZNDV/ZEXP) — no notas de crédito.
+    Fuente: SAP.SD_VENTAS (VC_material_codigo, VC_material_descripcion, DE_cantidad)
+    """
+    from datetime import datetime as _dt
+    safe_id    = customer_id.strip().replace("'", "''")
+    top_n      = max(1, min(int(top_n), 100))
+    now        = _dt.now()
+    safe_group = "categoria" if group_by.lower() == "categoria" else "producto"
+
+    where_parts = [
+        f"VC_solicitante_codigo = '{safe_id}'",
+        "VC_documento_pago_clase IN ('ZPEF','ZPEB','ZNDV','ZEXP')",
+        "VC_material_codigo IS NOT NULL",
+        "VC_material_codigo != ''",
+    ]
+
+    if period:
+        if "-" in period:
+            y, m = period.split("-")
+            where_parts.append(f"IN_anio = {int(y)} AND IN_mes = {int(m)}")
+        else:
+            where_parts.append(f"IN_anio = {int(period)}")
+
+    where_clause = "WHERE " + " AND ".join(where_parts)
+
+    if safe_group == "producto":
+        select_cols = (
+            "VC_material_codigo                             AS codigo, "
+            "MAX(VC_material_descripcion)                   AS nombre, "
+            "MAX(VC_grupo_material_directorio_vainsa_1)     AS categoria"
+        )
+        group_sql = "VC_material_codigo"
+    else:
+        select_cols = (
+            "VC_grupo_material_directorio_vainsa_1          AS codigo, "
+            "MAX(VC_grupo_material_directorio_vainsa_1)     AS nombre, "
+            "MAX(VC_grupo_material_directorio_vainsa_1)     AS categoria"
+        )
+        group_sql = "VC_grupo_material_directorio_vainsa_1"
+
+    rows = await azure_sql.query_readonly(f"""
+        SELECT TOP {top_n}
+            {select_cols},
+            SUM({NETO_SQL})                          AS ventas_netas,
+            SUM(DE_cantidad)                         AS unidades,
+            COUNT(DISTINCT VC_documento_pago_numero) AS pedidos,
+            MAX(DT_documento_pago_fecha)             AS ultima_compra
+        FROM SAP.SD_VENTAS
+        {where_clause}
+          AND {group_sql} IS NOT NULL
+        GROUP BY {group_sql}
+        HAVING SUM({NETO_SQL}) > 0
+        ORDER BY ventas_netas DESC
+    """)
+
+    total = sum(float(r.get("ventas_netas") or 0) for r in rows)
+
+    # Categorías compradas (para detectar cross-sell)
+    cats_compradas = list({(r.get("categoria") or "").strip() for r in rows if r.get("categoria")})
+
+    return {
+        "customer_id":         safe_id,
+        "period":              period or "Histórico",
+        "group_by":            safe_group,
+        "total_comprado":      round(total, 2),
+        "categorias_compradas": sorted(cats_compradas),
+        "items": [
+            {
+                "codigo":        r.get("codigo"),
+                "nombre":        (r.get("nombre") or "").strip(),
+                "categoria":     (r.get("categoria") or "").strip(),
+                "ventas_netas":  round(float(r.get("ventas_netas") or 0), 2),
+                "participacion_pct": round(float(r.get("ventas_netas") or 0) / total * 100, 1) if total else 0,
+                "unidades":      round(float(r.get("unidades") or 0), 0),
+                "pedidos":       int(r.get("pedidos") or 0),
+                "ultima_compra": str(r.get("ultima_compra") or ""),
+            }
+            for r in rows
+        ],
+        "timestamp": datetime.utcnow().isoformat(),
+    }

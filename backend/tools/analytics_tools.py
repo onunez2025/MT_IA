@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime, date
 
 from connectors.sql_connector import azure_sql
-from tools.utils import query_cache, NETO_SQL
+from tools.utils import query_cache, NETO_SQL, AVG_NETO_SQL
 from tools.material_utils import build_material_exclusion_clause
 
 logger = logging.getLogger(__name__)
@@ -698,4 +698,394 @@ async def get_vendor_performance_vs_target(
         ),
         "vendedores": vendedores,
         "timestamp":  datetime.utcnow().isoformat(),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. get_discount_analysis — Descuentos otorgados por vendedor o cliente
+# ─────────────────────────────────────────────────────────────────────────────
+async def get_discount_analysis(
+    period: Optional[str] = None,
+    vendor_id: Optional[str] = None,
+    customer_id: Optional[str] = None,
+    top_n: int = 20,
+    group_by: str = "vendedor",   # "vendedor" | "cliente"
+) -> Dict[str, Any]:
+    """
+    Analiza descuentos comerciales otorgados en ventas reales.
+
+    Fórmula: descuento_pct = SUM(DE_descuento) / SUM(DE_bruto) * 100
+    Solo documentos ZPEF/ZPEB/ZNDV/ZEXP (ventas reales, sin notas de crédito).
+
+    Fuente: SAP.SD_VENTAS (DE_bruto, DE_descuento, DE_neto)
+    """
+    top_n  = max(1, min(int(top_n), 100))
+    now    = datetime.now()
+
+    where_parts = [
+        "VC_documento_pago_clase IN ('ZPEF','ZPEB','ZNDV','ZEXP')",
+        "DE_bruto IS NOT NULL",
+        "DE_bruto > 0",
+    ]
+
+    if period:
+        if "-" in period:
+            y, m = period.split("-")
+            where_parts.append(f"IN_anio = {int(y)} AND IN_mes = {int(m)}")
+        else:
+            where_parts.append(f"IN_anio = {int(period)}")
+    else:
+        where_parts.append(f"IN_anio = {now.year} AND IN_mes = {now.month}")
+
+    if vendor_id:
+        sv = vendor_id.replace("'", "''")
+        where_parts.append(f"VC_vendedor_codigo = '{sv}'")
+
+    if customer_id:
+        sc = customer_id.replace("'", "''")
+        where_parts.append(f"VC_solicitante_codigo = '{sc}'")
+
+    safe_group = "cliente" if group_by.lower() == "cliente" else "vendedor"
+    group_col  = "VC_solicitante_codigo" if safe_group == "cliente" else "VC_vendedor_codigo"
+    name_col   = ("MAX(VC_solicitante_razon_social)" if safe_group == "cliente"
+                  else "MAX(VC_vendedor_nombre)")
+
+    where_clause = "WHERE " + " AND ".join(where_parts) + f" AND {group_col} IS NOT NULL"
+
+    rows = await azure_sql.query_readonly(f"""
+        SELECT TOP {top_n}
+            {group_col}                                              AS codigo,
+            {name_col}                                               AS nombre,
+            SUM(DE_bruto)                                            AS bruto_total,
+            SUM(DE_descuento)                                        AS descuento_total,
+            SUM(DE_neto)                                             AS neto_total,
+            SUM(DE_descuento) / NULLIF(SUM(DE_bruto), 0) * 100      AS descuento_pct,
+            COUNT(DISTINCT VC_documento_pago_numero)                 AS documentos
+        FROM SAP.SD_VENTAS
+        {where_clause}
+        GROUP BY {group_col}
+        HAVING SUM(DE_bruto) > 0
+        ORDER BY descuento_pct DESC
+    """)
+
+    total_bruto     = sum(float(r.get("bruto_total")     or 0) for r in rows)
+    total_descuento = sum(float(r.get("descuento_total") or 0) for r in rows)
+
+    return {
+        "period":            period or f"{now.year}-{now.month:02d}",
+        "group_by":          safe_group,
+        "vendor_filter":     vendor_id,
+        "customer_filter":   customer_id,
+        "total_bruto":       round(total_bruto, 2),
+        "total_descuento":   round(total_descuento, 2),
+        "descuento_pct_global": round(total_descuento / total_bruto * 100, 2) if total_bruto else 0.0,
+        "items": [
+            {
+                "codigo":           r.get("codigo"),
+                "nombre":           (r.get("nombre") or "").strip(),
+                "bruto_soles":      round(float(r.get("bruto_total")     or 0), 2),
+                "descuento_soles":  round(float(r.get("descuento_total") or 0), 2),
+                "neto_soles":       round(float(r.get("neto_total")      or 0), 2),
+                "descuento_pct":    round(float(r.get("descuento_pct")   or 0), 2),
+                "documentos":       int(r.get("documentos") or 0),
+            }
+            for r in rows
+        ],
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 10. get_real_margin — Margen real (DE_costo_real) por vendedor/categoría/producto
+# ─────────────────────────────────────────────────────────────────────────────
+async def get_real_margin(
+    period: Optional[str] = None,
+    vendor_id: Optional[str] = None,
+    category: Optional[str] = None,
+    top_n: int = 20,
+    group_by: str = "vendedor",   # "vendedor" | "categoria" | "producto"
+) -> Dict[str, Any]:
+    """
+    Margen real de contribución usando el costo real de SAP (DE_costo_real).
+    Más preciso que WEB_FORECAST porque opera a nivel de línea de factura.
+
+    Solo líneas con DE_costo_real > 0 y clases de venta real (ZPEF/ZPEB/ZNDV/ZEXP).
+    Fuente: SAP.SD_VENTAS
+    """
+    top_n = max(1, min(int(top_n), 100))
+    now   = datetime.now()
+
+    where_parts = [
+        "VC_documento_pago_clase IN ('ZPEF','ZPEB','ZNDV','ZEXP')",
+        "DE_costo_real IS NOT NULL",
+        "DE_costo_real > 0",
+        "DE_neto > 0",
+    ]
+
+    if period:
+        if "-" in period:
+            y, m = period.split("-")
+            where_parts.append(f"IN_anio = {int(y)} AND IN_mes = {int(m)}")
+        else:
+            where_parts.append(f"IN_anio = {int(period)}")
+    else:
+        where_parts.append(f"IN_anio = {now.year} AND IN_mes = {now.month}")
+
+    if vendor_id:
+        sv = vendor_id.replace("'", "''")
+        where_parts.append(f"VC_vendedor_codigo = '{sv}'")
+
+    if category:
+        sc = category.replace("'", "''")
+        where_parts.append(f"VC_grupo_material_directorio_vainsa_1 = '{sc}'")
+
+    safe_group = group_by.lower()
+    if safe_group not in ("vendedor", "categoria", "producto"):
+        safe_group = "vendedor"
+
+    _COL = {
+        "vendedor":  ("VC_vendedor_codigo",                   "MAX(VC_vendedor_nombre)"),
+        "categoria": ("VC_grupo_material_directorio_vainsa_1","MAX(VC_grupo_material_directorio_vainsa_1)"),
+        "producto":  ("VC_material_codigo",                   "MAX(VC_material_descripcion)"),
+    }
+    group_col, name_col = _COL[safe_group]
+
+    where_clause = "WHERE " + " AND ".join(where_parts) + f" AND {group_col} IS NOT NULL"
+
+    rows = await azure_sql.query_readonly(f"""
+        SELECT TOP {top_n}
+            {group_col}                                                      AS codigo,
+            {name_col}                                                       AS nombre,
+            SUM(DE_neto)                                                     AS ventas_netas,
+            SUM(DE_costo_real)                                               AS costo_total,
+            SUM(DE_neto - DE_costo_real)                                     AS margen_soles,
+            SUM(DE_neto - DE_costo_real) / NULLIF(SUM(DE_neto), 0) * 100    AS margen_pct,
+            SUM(DE_cantidad)                                                 AS unidades,
+            COUNT(DISTINCT VC_documento_pago_numero)                         AS documentos
+        FROM SAP.SD_VENTAS
+        {where_clause}
+        GROUP BY {group_col}
+        ORDER BY margen_pct DESC
+    """)
+
+    total_v = sum(float(r.get("ventas_netas") or 0) for r in rows)
+    total_c = sum(float(r.get("costo_total")  or 0) for r in rows)
+    total_m = sum(float(r.get("margen_soles") or 0) for r in rows)
+
+    return {
+        "period":              period or f"{now.year}-{now.month:02d}",
+        "group_by":            safe_group,
+        "vendor_filter":       vendor_id,
+        "category_filter":     category,
+        "total_ventas_netas":  round(total_v, 2),
+        "total_costo":         round(total_c, 2),
+        "total_margen_soles":  round(total_m, 2),
+        "margen_pct_global":   round(total_m / total_v * 100, 2) if total_v else 0.0,
+        "nota": (
+            "Solo líneas con costo real registrado y clase de venta real. "
+            "Líneas sin DE_costo_real quedan excluidas del cálculo."
+        ),
+        "items": [
+            {
+                "codigo":        r.get("codigo"),
+                "nombre":        (r.get("nombre") or "").strip(),
+                "ventas_netas":  round(float(r.get("ventas_netas") or 0), 2),
+                "costo_total":   round(float(r.get("costo_total")  or 0), 2),
+                "margen_soles":  round(float(r.get("margen_soles") or 0), 2),
+                "margen_pct":    round(float(r.get("margen_pct")   or 0), 2),
+                "unidades":      round(float(r.get("unidades")     or 0), 0),
+                "documentos":    int(r.get("documentos") or 0),
+            }
+            for r in rows
+        ],
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 11. get_sales_by_geography — Ventas por departamento/provincia/distrito
+# ─────────────────────────────────────────────────────────────────────────────
+async def get_sales_by_geography(
+    period: Optional[str] = None,
+    level: str = "departamento",  # "departamento" | "provincia" | "distrito"
+    top_n: int = 20,
+) -> Dict[str, Any]:
+    """
+    Distribución de ventas netas por ubicación geográfica del cliente.
+    Usa la dirección registrada en SAP para el solicitante.
+
+    Fuente: SAP.SD_VENTAS (VC_solicitante_departamento/provincia/distrito)
+    """
+    top_n      = max(1, min(int(top_n), 100))
+    now        = datetime.now()
+    safe_level = level.lower()
+    if safe_level not in ("departamento", "provincia", "distrito"):
+        safe_level = "departamento"
+
+    level_col = {
+        "departamento": "VC_solicitante_departamento",
+        "provincia":    "VC_solicitante_provincia",
+        "distrito":     "VC_solicitante_distrito",
+    }[safe_level]
+
+    where_parts = [f"{level_col} IS NOT NULL", f"{level_col} != ''"]
+
+    if period:
+        if "-" in period:
+            y, m = period.split("-")
+            where_parts.append(f"IN_anio = {int(y)} AND IN_mes = {int(m)}")
+        else:
+            where_parts.append(f"IN_anio = {int(period)}")
+    else:
+        where_parts.append(f"IN_anio = {now.year} AND IN_mes = {now.month}")
+
+    where_clause = "WHERE " + " AND ".join(where_parts)
+
+    rows = await azure_sql.query_readonly(f"""
+        SELECT TOP {top_n}
+            {level_col}                              AS region,
+            SUM({NETO_SQL})                          AS ventas_netas,
+            COUNT(DISTINCT VC_solicitante_codigo)    AS clientes,
+            COUNT(DISTINCT VC_documento_pago_numero) AS documentos,
+            SUM(DE_cantidad)                         AS unidades
+        FROM SAP.SD_VENTAS
+        {where_clause}
+        GROUP BY {level_col}
+        HAVING SUM({NETO_SQL}) > 0
+        ORDER BY ventas_netas DESC
+    """)
+
+    total = sum(float(r.get("ventas_netas") or 0) for r in rows)
+
+    return {
+        "period":        period or f"{now.year}-{now.month:02d}",
+        "level":         safe_level,
+        "total_ventas":  round(total, 2),
+        "regiones": [
+            {
+                "region":            (r.get("region") or "(Sin dato)").strip(),
+                "ventas_netas":      round(float(r.get("ventas_netas") or 0), 2),
+                "participacion_pct": round(float(r.get("ventas_netas") or 0) / total * 100, 1) if total else 0,
+                "clientes":          int(r.get("clientes")   or 0),
+                "documentos":        int(r.get("documentos") or 0),
+                "unidades":          round(float(r.get("unidades") or 0), 0),
+            }
+            for r in rows
+        ],
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 12. get_customer_pareto — Análisis Pareto 80/20 de clientes
+# ─────────────────────────────────────────────────────────────────────────────
+async def get_customer_pareto(
+    period: Optional[str] = None,
+    top_n: int = 50,
+    vendor_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Identifica qué porcentaje de clientes genera el 80% de las ventas (Pareto).
+
+    Clasifica en:
+      Clase A — clientes que acumulan hasta el 80% del total (los vitales)
+      Clase B — del 80% al 95% acumulado
+      Clase C — del 95% al 100% (los triviales)
+
+    Fuente: SAP.SD_VENTAS
+    """
+    top_n = max(10, min(int(top_n), 200))
+    now   = datetime.now()
+
+    where_parts = ["VC_solicitante_codigo IS NOT NULL"]
+
+    if period:
+        if "-" in period:
+            y, m = period.split("-")
+            where_parts.append(f"IN_anio = {int(y)} AND IN_mes = {int(m)}")
+        else:
+            where_parts.append(f"IN_anio = {int(period)}")
+    else:
+        where_parts.append(f"IN_anio = {now.year} AND IN_mes = {now.month}")
+
+    if vendor_id:
+        sv = vendor_id.replace("'", "''")
+        where_parts.append(f"VC_vendedor_codigo = '{sv}'")
+
+    where_clause = "WHERE " + " AND ".join(where_parts)
+
+    # Total del universo
+    total_rows = await azure_sql.query_readonly(f"""
+        SELECT SUM({NETO_SQL})                        AS total_ventas,
+               COUNT(DISTINCT VC_solicitante_codigo)  AS total_clientes
+        FROM SAP.SD_VENTAS
+        {where_clause}
+    """)
+    total_v   = float(total_rows[0].get("total_ventas")   or 0) if total_rows else 0.0
+    total_cli = int(total_rows[0].get("total_clientes")   or 0) if total_rows else 0
+
+    # Ranking de clientes (top_n más grandes)
+    rows = await azure_sql.query_readonly(f"""
+        SELECT TOP {top_n}
+            VC_solicitante_codigo                    AS codigo,
+            MAX(VC_solicitante_razon_social)         AS nombre,
+            SUM({NETO_SQL})                          AS ventas_netas,
+            COUNT(DISTINCT VC_documento_pago_numero) AS pedidos,
+            MAX(DT_documento_pago_fecha)             AS ultima_compra
+        FROM SAP.SD_VENTAS
+        {where_clause}
+        GROUP BY VC_solicitante_codigo
+        HAVING SUM({NETO_SQL}) > 0
+        ORDER BY ventas_netas DESC
+    """)
+
+    # Calcular % acumulado y clasificar
+    clientes = []
+    cumsum   = 0.0
+    for i, r in enumerate(rows, 1):
+        v       = float(r.get("ventas_netas") or 0)
+        cumsum += v
+        cum_pct  = round(cumsum / total_v * 100, 1) if total_v else 0.0
+        part_pct = round(v / total_v * 100, 2) if total_v else 0.0
+        clase    = "A" if cum_pct <= 80 else ("B" if cum_pct <= 95 else "C")
+
+        clientes.append({
+            "rank":             i,
+            "codigo":           r.get("codigo"),
+            "nombre":           (r.get("nombre") or "").strip(),
+            "ventas_netas":     round(v, 2),
+            "participacion_pct": part_pct,
+            "acumulado_pct":    cum_pct,
+            "clase_pareto":     clase,
+            "pedidos":          int(r.get("pedidos") or 0),
+            "ultima_compra":    str(r.get("ultima_compra") or ""),
+        })
+
+    por_clase = {
+        cls: [c for c in clientes if c["clase_pareto"] == cls]
+        for cls in ("A", "B", "C")
+    }
+
+    return {
+        "period":                  period or f"{now.year}-{now.month:02d}",
+        "vendor_filter":           vendor_id,
+        "total_ventas":            round(total_v, 2),
+        "total_clientes_universo": total_cli,
+        "top_n_analizado":         len(clientes),
+        "concentracion": {
+            cls: {
+                "descripcion": {
+                    "A": "Clientes que generan el primer 80% de ventas",
+                    "B": "Clientes que generan del 80% al 95% acumulado",
+                    "C": "Clientes del 95% al 100% (long tail)",
+                }[cls],
+                "cantidad_en_top": len(por_clase[cls]),
+                "pct_del_total_clientes": (
+                    round(len(por_clase[cls]) / total_cli * 100, 1) if total_cli else 0
+                ),
+            }
+            for cls in ("A", "B", "C")
+        },
+        "clientes": clientes,
+        "timestamp": datetime.utcnow().isoformat(),
     }

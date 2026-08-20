@@ -26,7 +26,7 @@ from tools.sales_tools import (
     get_sales_forecast,
     get_sales_performance,
 )
-from tools.customer_tools import get_customer_insights, search_customer_by_name
+from tools.customer_tools import get_customer_insights, search_customer_by_name, get_customer_products
 from tools.inventory_tools import get_inventory_by_sales
 from tools.analytics_tools import (
     get_gap_to_target,
@@ -37,6 +37,11 @@ from tools.analytics_tools import (
     get_top_margin_products,
     get_product_sales_ranking,
     get_vendor_performance_vs_target,
+    # Fase 0.7
+    get_discount_analysis,
+    get_real_margin,
+    get_sales_by_geography,
+    get_customer_pareto,
 )
 from tools.report_tools import generate_forecast_report
 from tools.store_tools import get_sales_by_store, get_store_detail
@@ -102,6 +107,12 @@ TOOL_REGISTRY: Dict[str, Any] = {
     "get_delivery_status":        get_delivery_status,
     "get_inventory_value":        get_inventory_value,
     "get_nps_summary":            get_nps_summary,
+    # Fase 0.7 — nuevas herramientas analíticas
+    "get_customer_products":      get_customer_products,
+    "get_discount_analysis":      get_discount_analysis,
+    "get_real_margin":            get_real_margin,
+    "get_sales_by_geography":     get_sales_by_geography,
+    "get_customer_pareto":        get_customer_pareto,
 }
 
 # ── Saludos y mensajes sin intención de consulta ──────────────────────────────

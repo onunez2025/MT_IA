@@ -892,6 +892,180 @@ TOOL_SCHEMAS = [
             },
         },
     },
+    # ── Fase 0.7 — nuevas herramientas analíticas ──────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "get_customer_products",
+            "description": (
+                "Productos o categorías que ha comprado un cliente específico. "
+                "Útil para detectar oportunidades de cross-sell y upsell: qué líneas consume, "
+                "cuánto gasta en cada producto, cuántas veces lo ha pedido y cuándo fue la última compra. "
+                "Usar cuando pregunten: ¿qué productos compra X cliente? ¿qué le podemos ofrecer a X? "
+                "¿en qué categorías participa X? ¿qué consume el cliente? cross-sell, portafolio del cliente."
+            ),
+            "parameters": {
+                "type": "object",
+                "required": ["customer_id"],
+                "properties": {
+                    "customer_id": {
+                        "type": "string",
+                        "description": "Código SAP del solicitante (VC_solicitante_codigo). Usar search_customer_by_name primero si solo se conoce el nombre."
+                    },
+                    "period": {
+                        "type": "string",
+                        "description": "Período: YYYY-MM (mes) o YYYY (año). Sin valor = histórico completo."
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "Top N productos/categorías por ventas. Default: 20."
+                    },
+                    "group_by": {
+                        "type": "string",
+                        "enum": ["producto", "categoria"],
+                        "description": "'producto' agrupa por código de material; 'categoria' agrupa por directorio de producto. Default: 'producto'."
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_discount_analysis",
+            "description": (
+                "Análisis de descuentos aplicados: porcentaje promedio de descuento por vendedor o cliente. "
+                "Muestra quién da más descuento, cuánto se está cediendo en precio y el impacto en facturación. "
+                "Usar cuando pregunten: ¿cuánto descuento está dando X vendedor? ¿quiénes tienen mayor descuento? "
+                "¿cuál es el descuento promedio? descuentos, política de precios, margen de precio."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "period": {
+                        "type": "string",
+                        "description": "Período: YYYY-MM o YYYY. Sin valor = mes actual."
+                    },
+                    "vendor_id": {
+                        "type": "string",
+                        "description": "Filtrar por código de vendedor (opcional)."
+                    },
+                    "customer_id": {
+                        "type": "string",
+                        "description": "Filtrar por código SAP de cliente (opcional)."
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "Top N resultados. Default: 20."
+                    },
+                    "group_by": {
+                        "type": "string",
+                        "enum": ["vendedor", "cliente"],
+                        "description": "'vendedor' agrupa por vendedor; 'cliente' agrupa por cliente. Default: 'vendedor'."
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_real_margin",
+            "description": (
+                "Margen real de ventas usando costo real del producto (DE_costo_real). "
+                "Calcula margen en soles y porcentaje por vendedor, categoría o producto. "
+                "Más preciso que el margen de precio porque refleja el costo real incurrido. "
+                "Usar cuando pregunten: ¿cuál es el margen real? ¿cuánto ganamos en X categoría? "
+                "¿qué vendedor vende con más margen? rentabilidad real, ganancia, margen de contribución."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "period": {
+                        "type": "string",
+                        "description": "Período: YYYY-MM o YYYY. Sin valor = mes actual."
+                    },
+                    "vendor_id": {
+                        "type": "string",
+                        "description": "Filtrar por código de vendedor (opcional)."
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Filtrar por categoría/directorio de producto (opcional)."
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "Top N resultados. Default: 20."
+                    },
+                    "group_by": {
+                        "type": "string",
+                        "enum": ["vendedor", "categoria", "producto"],
+                        "description": "Agrupar por vendedor, categoría o producto. Default: 'vendedor'."
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_sales_by_geography",
+            "description": (
+                "Ventas desagregadas por ubicación geográfica del cliente: departamento, provincia o distrito. "
+                "Muestra dónde están concentradas las ventas y qué regiones tienen mayor potencial. "
+                "Usar cuando pregunten: ¿de qué regiones son nuestros clientes? ¿dónde vendemos más? "
+                "¿cuánto facturamos en Lima? ventas por región, departamento, provincia, geografía, mapa de ventas."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "period": {
+                        "type": "string",
+                        "description": "Período: YYYY-MM o YYYY. Sin valor = mes actual."
+                    },
+                    "level": {
+                        "type": "string",
+                        "enum": ["departamento", "provincia", "distrito"],
+                        "description": "Nivel geográfico de agrupación. Default: 'departamento'."
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "Top N ubicaciones por ventas. Default: 20."
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_customer_pareto",
+            "description": (
+                "Análisis Pareto (80/20) de clientes: clasifica en Clase A (top 80% de ventas), "
+                "Clase B (siguiente 15%) y Clase C (último 5%). Muestra la concentración de la cartera "
+                "y cuántos clientes generan la mayor parte del negocio. "
+                "Usar cuando pregunten: ¿cuántos clientes son clave? ¿cuál es el 80/20 de clientes? "
+                "¿quiénes son los clientes A? Pareto, concentración de cartera, clientes importantes."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "period": {
+                        "type": "string",
+                        "description": "Período: YYYY-MM o YYYY. Sin valor = mes actual."
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "Número de clientes a evaluar en el ranking. Default: 50."
+                    },
+                    "vendor_id": {
+                        "type": "string",
+                        "description": "Filtrar por cartera de un vendedor específico (opcional)."
+                    },
+                },
+            },
+        },
+    },
 ]
 
 # Set de nombres válidos (para validación rápida)
@@ -1152,6 +1326,12 @@ _TOOL_STATUS: Dict[str, str] = {
     "get_store_detail":          "🏪 Consultando detalle de tienda...",
     "get_vendor_performance_vs_target": "📊 Calculando cumplimiento por vendedor...",
     "generate_forecast_report":         "📊 Generando reporte de forecast...",
+    # Fase 0.7
+    "get_customer_products":    "🛍️ Consultando productos del cliente...",
+    "get_discount_analysis":    "💹 Analizando descuentos...",
+    "get_real_margin":          "📊 Calculando margen real...",
+    "get_sales_by_geography":   "🗺️ Analizando ventas por región...",
+    "get_customer_pareto":      "🏆 Calculando análisis Pareto de clientes...",
 }
 
 

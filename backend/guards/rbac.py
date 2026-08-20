@@ -22,6 +22,8 @@ _VENDEDOR_TOOLS = [
     "get_customer_price",
     "get_service_orders",
     "get_delivery_status",
+    # Fase 0.7 — análisis de cliente (cross-sell)
+    "get_customer_products",
 ]
 
 _JEFE_TOOLS = _VENDEDOR_TOOLS + [
@@ -46,6 +48,11 @@ _JEFE_TOOLS = _VENDEDOR_TOOLS + [
     "get_clients_by_store",
     "get_inventory_value",
     "get_nps_summary",
+    # Fase 0.7 — nuevas herramientas analíticas
+    "get_discount_analysis",
+    "get_real_margin",
+    "get_sales_by_geography",
+    "get_customer_pareto",
 ]
 
 ROLE_PERMISSIONS: Dict[str, List[str]] = {
