@@ -11,29 +11,10 @@ from tools.utils import query_cache
 logger = logging.getLogger(__name__)
 
 
-async def search_customer_by_name(name: str, limit: int = 10) -> Dict[str, Any]:
-    """
-    Busca clientes por nombre/razón social O por número de documento
-    (DNI, RUC, carnet de extranjería).
-
-    Detecta automáticamente si el input es un número (→ busca por documento)
-    o texto (→ busca por razón social).
-
-    Args:
-        name:  Nombre, fragmento de nombre, DNI, RUC o CE. Ej: 'VALVOSANITARIA', '70333796'.
-        limit: Máximo de resultados. Default 10.
-    """
-    safe_input = name.strip().replace("'", "''")
-    limit = max(1, min(int(limit), 30))
-
-    # ¿Es numérico? → buscar por VC_solicitante_identificacion_numero
-    if safe_input.isdigit():
-        where_clause = f"VC_solicitante_identificacion_numero = '{safe_input}'"
-    else:
-        where_clause = f"VC_solicitante_razon_social LIKE '%{safe_input.upper()}%'"
-
-    rows = await azure_sql.query_readonly(f"""
-        SELECT TOP {limit}
+async def _query_clients(where: str, top: int) -> list:
+    """Helper: ejecuta la query base de clientes con el WHERE dado."""
+    return await azure_sql.query_readonly(f"""
+        SELECT TOP {top}
             VC_solicitante_codigo                       AS codigo,
             MAX(VC_solicitante_razon_social)            AS razon_social,
             MAX(VC_solicitante_identificacion_numero)   AS doc_identidad,
@@ -41,15 +22,18 @@ async def search_customer_by_name(name: str, limit: int = 10) -> Dict[str, Any]:
             COUNT(DISTINCT VC_documento_pago_numero)    AS pedidos,
             MAX(DT_documento_pago_fecha)                AS ultima_compra
         FROM SAP.SD_VENTAS
-        WHERE {where_clause}
+        WHERE {where}
           AND VC_solicitante_codigo IS NOT NULL
         GROUP BY VC_solicitante_codigo
         ORDER BY total_compras DESC
     """)
 
+
+def _fmt_clients(rows: list, query: str, match_type: str) -> Dict[str, Any]:
+    """Helper: formatea la respuesta estándar de búsqueda de clientes."""
     return {
-        "query": name,
-        "busqueda_por": "documento" if safe_input.isdigit() else "nombre",
+        "query": query,
+        "match_type": match_type,   # "documento" | "exacto" | "aproximado" | "sin_resultados"
         "total_encontrados": len(rows),
         "clientes": [
             {
@@ -63,6 +47,80 @@ async def search_customer_by_name(name: str, limit: int = 10) -> Dict[str, Any]:
             for r in rows
         ],
     }
+
+
+async def search_customer_by_name(name: str, limit: int = 10) -> Dict[str, Any]:
+    """
+    Busca clientes por nombre/razón social, RUC, DNI u otro documento.
+
+    Estrategias en cascada (se detiene en la primera que devuelva resultados):
+      1. Numérico (≥8 dígitos) → búsqueda exacta por RUC/DNI.
+      2. Texto → substring LIKE '%X%' en razón social (rápido, sensible a typos graves).
+      3. Sin resultados → busca por palabras individuales + scoring de similitud Python
+         (cubre errores tipográficos como "Rinay" → encuentra "Rinnai").
+
+    Args:
+        name:  Nombre, fragmento, RUC o DNI.
+               Ej: 'VALVOSANITARIA', '20512345678', 'Rinay Peru', 'RINNAI'.
+        limit: Máximo de resultados. Default 10.
+    """
+    import difflib
+
+    raw = name.strip()
+    safe = raw.replace("'", "''")
+    upper = safe.upper()
+    limit = max(1, min(int(limit), 30))
+
+    # ── Estrategia 1: numérico → RUC / DNI exacto ────────────────────────────
+    digits_only = "".join(c for c in raw if c.isdigit())
+    if digits_only and len(digits_only) >= 8 and digits_only == raw.replace("-", "").replace(" ", ""):
+        rows = await _query_clients(
+            where=f"VC_solicitante_identificacion_numero = '{digits_only}'",
+            top=limit,
+        )
+        return _fmt_clients(rows, name, "documento")
+
+    # ── Estrategia 2: substring exacto en razón social ───────────────────────
+    rows = await _query_clients(
+        where=f"VC_solicitante_razon_social LIKE '%{upper}%'",
+        top=limit,
+    )
+    if rows:
+        return _fmt_clients(rows, name, "exacto")
+
+    # ── Estrategia 3: palabras individuales + scoring por similitud ──────────
+    # Cubre typos: "Rinay" → palabras ["Rinay"] falla LIKE, pero la búsqueda ampliada
+    # trae candidatos que luego se puntúan con difflib.SequenceMatcher.
+    words = [w for w in upper.split() if len(w) >= 3]
+    if not words:
+        return _fmt_clients([], name, "sin_resultados")
+
+    word_conditions = " OR ".join(
+        f"VC_solicitante_razon_social LIKE '%{w}%'" for w in words
+    )
+
+    # Para la estrategia fonética, también intentamos el SOUNDEX de la primera palabra
+    # que tenga ≥4 chars (SQL Server nativo, sin dependencias externas)
+    primary_word = next((w for w in words if len(w) >= 4), words[0])
+    phonetic_cond = (
+        f"DIFFERENCE(VC_solicitante_razon_social, '{primary_word}') >= 3"
+    )
+
+    candidates = await _query_clients(
+        where=f"({word_conditions} OR {phonetic_cond})",
+        top=limit * 5,   # traer más para filtrar y rankear en Python
+    )
+
+    if not candidates:
+        return _fmt_clients([], name, "sin_resultados")
+
+    # Scoring con difflib: ratio de similitud entre el query y la razón social
+    def _score(r: dict) -> float:
+        rs = (r.get("razon_social") or "").upper()
+        return difflib.SequenceMatcher(None, upper, rs).ratio()
+
+    top_scored = sorted(candidates, key=_score, reverse=True)[:limit]
+    return _fmt_clients(top_scored, name, "aproximado")
 
 
 async def get_customer_insights(customer_id: str) -> Dict[str, Any]:
