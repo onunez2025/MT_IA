@@ -17,6 +17,11 @@ _VENDEDOR_TOOLS = [
     # Fase 0.5 PUNTO_VENTA — Vendedor puede consultar stock y contacto de clientes
     "get_stock_by_product",
     "get_customer_contact",
+    # Fase 0.6 — herramientas de Vendedor
+    "get_customer_credit",
+    "get_customer_price",
+    "get_service_orders",
+    "get_delivery_status",
 ]
 
 _JEFE_TOOLS = _VENDEDOR_TOOLS + [
@@ -35,6 +40,11 @@ _JEFE_TOOLS = _VENDEDOR_TOOLS + [
     # Fase 0.5 PUNTO_VENTA — operativas solo para Jefe/Gerente/Admin
     "get_pending_orders",
     "get_returns_summary",
+    # Fase 0.6 — herramientas de Jefe/Gerente/Admin
+    "get_open_receivables",
+    "get_clients_by_store",
+    "get_inventory_value",
+    "get_nps_summary",
 ]
 
 ROLE_PERMISSIONS: Dict[str, List[str]] = {

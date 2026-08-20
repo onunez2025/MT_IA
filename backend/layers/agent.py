@@ -612,6 +612,250 @@ TOOL_SCHEMAS = [
             },
         },
     },
+    # ── Fase 0.6 — 8 quick wins ───────────────────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "get_open_receivables",
+            "description": (
+                "Lista de facturas pendientes de cobro (cuentas por cobrar abiertas). "
+                "Muestra monto por cobrar, días de antigüedad y quién debe. "
+                "Usar cuando pregunten: ¿cuánto nos deben? ¿qué clientes tienen facturas pendientes? "
+                "¿cuánto hay vencido? cartera vencida, cuentas por cobrar, morosidad."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "customer_id": {
+                        "type": "string",
+                        "description": "Código SAP del cliente (opcional). Sin valor = todos los clientes."
+                    },
+                    "days_overdue": {
+                        "type": "integer",
+                        "description": "Mostrar solo documentos con N+ días vencidos (opcional). Ej: 30, 60, 90."
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "Máximo de documentos. Default: 30."
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_customer_credit",
+            "description": (
+                "Límite de crédito, monto utilizado y disponible de un cliente. "
+                "Usar cuando pregunten: ¿cuánto crédito tiene disponible el cliente X? "
+                "¿está bloqueado? ¿cuál es su límite? ¿cuándo pagó por última vez? "
+                "REQUIERE código SAP del cliente."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "customer_id": {
+                        "type": "string",
+                        "description": "Código SAP del cliente (7-10 dígitos)."
+                    },
+                },
+                "required": ["customer_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_customer_price",
+            "description": (
+                "Precios especiales negociados para un cliente en el punto de venta. "
+                "Usar cuando pregunten: ¿a qué precio le vendemos X a este cliente? "
+                "¿qué precio especial tiene? ¿cuánto cuesta para el cliente Y? "
+                "REQUIERE código SAP del cliente."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "customer_id": {
+                        "type": "string",
+                        "description": "Código SAP del cliente."
+                    },
+                    "product_name": {
+                        "type": "string",
+                        "description": "Nombre o fragmento del producto (opcional). Ej: 'TERMA', 'CALEFON'."
+                    },
+                    "product_code": {
+                        "type": "string",
+                        "description": "Código SAP exacto del material (opcional). Ej: 'RU-REZ20I'."
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "Máximo de materiales. Default: 20."
+                    },
+                },
+                "required": ["customer_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_clients_by_store",
+            "description": (
+                "Lista de clientes asignados a una tienda/oficina de venta o zona. "
+                "Muestra la cartera de clientes por punto de venta. "
+                "Usar cuando pregunten: ¿qué clientes tiene la tienda X? "
+                "¿quiénes están en la zona Y? cartera de clientes de una oficina."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "store_code": {
+                        "type": "string",
+                        "description": "Código de la oficina de venta. Ej: 'ME10', 'SH01', 'AR01'."
+                    },
+                    "zone": {
+                        "type": "string",
+                        "description": "Código de zona de ventas (opcional). Ej: '15', '22'."
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "Máximo de clientes. Default: 50."
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_service_orders",
+            "description": (
+                "Historial de órdenes de servicio técnico: instalaciones, reparaciones y mantenimientos. "
+                "Usar cuando pregunten: ¿qué servicios tuvo el cliente X? ¿cuántas instalaciones hubo? "
+                "¿qué técnico atendió? historial de servicio técnico, fallas reportadas, garantías."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "customer_doc": {
+                        "type": "string",
+                        "description": "DNI, RUC u otro documento del cliente (opcional)."
+                    },
+                    "product_name": {
+                        "type": "string",
+                        "description": "Nombre o fragmento del producto (opcional). Ej: 'TERMA', 'CALEFON'."
+                    },
+                    "state": {
+                        "type": "string",
+                        "description": "Estado del servicio (opcional). Ej: 'COMPLETADA', 'PENDIENTE', 'ANULADA'."
+                    },
+                    "days": {
+                        "type": "integer",
+                        "description": "Días hacia atrás a consultar. Default: 90."
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "Máximo de órdenes. Default: 20."
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_delivery_status",
+            "description": (
+                "Estado actual de entregas y despachos (sistema Beetrack). "
+                "Permite rastrear si un pedido fue entregado, está en ruta o falló. "
+                "Usar cuando pregunten: ¿llegó el pedido X? ¿en qué estado está el envío? "
+                "¿fue entregado el despacho Y? tracking de entrega, seguimiento de pedidos."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "order_number": {
+                        "type": "string",
+                        "description": "Número de pedido SAP. Ej: '7501653027'."
+                    },
+                    "guide_number": {
+                        "type": "string",
+                        "description": "Número de guía de remisión (opcional)."
+                    },
+                    "customer_name": {
+                        "type": "string",
+                        "description": "Nombre o fragmento del destinatario (opcional)."
+                    },
+                    "days": {
+                        "type": "integer",
+                        "description": "Días hacia atrás a buscar. Default: 30."
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "Máximo de despachos. Default: 20."
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_inventory_value",
+            "description": (
+                "Valor económico del inventario en soles por material y centro de valoración. "
+                "Usar cuando pregunten: ¿cuánto vale el inventario? ¿qué productos tienen mayor stock en valor? "
+                "valorización de inventario, stock valorizado, inversión en inventario."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "center": {
+                        "type": "string",
+                        "description": "Centro/ámbito de valoración SAP (opcional). Ej: 'M310', 'G411'."
+                    },
+                    "product_name": {
+                        "type": "string",
+                        "description": "Nombre o fragmento del material (opcional)."
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "Top N materiales por valor. Default: 20."
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_nps_summary",
+            "description": (
+                "Resumen del Net Promoter Score (NPS) de satisfacción de clientes. "
+                "Calcula promotores (9-10), pasivos (7-8), detractores (0-6) y score final. "
+                "Usar cuando pregunten: ¿cómo está la satisfacción del cliente? ¿cuál es el NPS? "
+                "¿qué dicen los clientes? satisfacción, encuestas, NPS, comentarios de clientes."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "period": {
+                        "type": "string",
+                        "description": (
+                            "Período a analizar: YYYY-MM (mes) o YYYY (año). "
+                            "Sin valor = año actual. Ej: '2026-07', '2026'."
+                        )
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "Número de comentarios recientes a incluir. Default: 10."
+                    },
+                },
+            },
+        },
+    },
 ]
 
 # Set de nombres válidos (para validación rápida)

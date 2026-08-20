@@ -44,6 +44,15 @@ from tools.local_tools import (
     get_pending_orders,
     get_returns_summary,
     get_customer_contact,
+    # Fase 0.6
+    get_open_receivables,
+    get_customer_credit,
+    get_customer_price,
+    get_clients_by_store,
+    get_service_orders,
+    get_delivery_status,
+    get_inventory_value,
+    get_nps_summary,
 )
 from guards.rbac import validate_rbac
 from guards.audit import log_audit_entry
@@ -82,6 +91,15 @@ TOOL_REGISTRY: Dict[str, Any] = {
     "get_pending_orders":         get_pending_orders,
     "get_returns_summary":        get_returns_summary,
     "get_customer_contact":       get_customer_contact,
+    # PUNTO_VENTA local (Fase 0.6)
+    "get_open_receivables":       get_open_receivables,
+    "get_customer_credit":        get_customer_credit,
+    "get_customer_price":         get_customer_price,
+    "get_clients_by_store":       get_clients_by_store,
+    "get_service_orders":         get_service_orders,
+    "get_delivery_status":        get_delivery_status,
+    "get_inventory_value":        get_inventory_value,
+    "get_nps_summary":            get_nps_summary,
 }
 
 # ── Saludos y mensajes sin intención de consulta ──────────────────────────────
