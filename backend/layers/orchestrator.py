@@ -39,6 +39,12 @@ from tools.analytics_tools import (
 )
 from tools.report_tools import generate_forecast_report
 from tools.store_tools import get_sales_by_store, get_store_detail
+from tools.local_tools import (
+    get_stock_by_product,
+    get_pending_orders,
+    get_returns_summary,
+    get_customer_contact,
+)
 from guards.rbac import validate_rbac
 from guards.audit import log_audit_entry
 from guards.sanitization import sanitize_user_input
@@ -71,6 +77,11 @@ TOOL_REGISTRY: Dict[str, Any] = {
     # Tiendas/Oficinas de venta
     "get_sales_by_store":         get_sales_by_store,
     "get_store_detail":           get_store_detail,
+    # PUNTO_VENTA local (Fase 0.5)
+    "get_stock_by_product":       get_stock_by_product,
+    "get_pending_orders":         get_pending_orders,
+    "get_returns_summary":        get_returns_summary,
+    "get_customer_contact":       get_customer_contact,
 }
 
 # ── Saludos y mensajes sin intención de consulta ──────────────────────────────

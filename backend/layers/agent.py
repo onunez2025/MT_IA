@@ -469,6 +469,149 @@ TOOL_SCHEMAS = [
             },
         },
     },
+    # ── Herramientas PUNTO_VENTA (Fase 0.5) ────────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "get_stock_by_product",
+            "description": (
+                "Consulta el stock disponible de un material/producto en tiempo real. "
+                "Muestra stock libre, bloqueado, en tránsito y en control de calidad por almacén. "
+                "Usar cuando pregunten: ¿cuánto stock hay de X? ¿hay disponibilidad de X? "
+                "¿cuántas unidades tenemos de X? stock de un producto, inventario disponible."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "product_name": {
+                        "type": "string",
+                        "description": (
+                            "Nombre o fragmento del material a buscar. "
+                            "Ej: 'TERMA SOLE', 'COBRE 10MM', 'VALVULA'. "
+                            "Usar si el usuario da el nombre del producto."
+                        )
+                    },
+                    "product_code": {
+                        "type": "string",
+                        "description": (
+                            "Código SAP exacto del material (opcional). "
+                            "Usar si el usuario da el código exacto."
+                        )
+                    },
+                    "center": {
+                        "type": "string",
+                        "description": (
+                            "Código del centro/almacén SAP (opcional). "
+                            "Ej: 'M310', 'G411'. Sin valor = todos los almacenes."
+                        )
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "Máximo de materiales a mostrar. Default: 20."
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_pending_orders",
+            "description": (
+                "Lista pedidos bloqueados (con bloqueo de entrega o de facturación). "
+                "Muestra número de pedido, fecha, tipo de bloqueo, valor neto y tienda. "
+                "Usar cuando pregunten: ¿qué pedidos están bloqueados? ¿hay pedidos pendientes? "
+                "¿cuánto valor tenemos en pedidos bloqueados? pedidos sin entregar, pedidos retenidos."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "days": {
+                        "type": "integer",
+                        "description": (
+                            "Número de días hacia atrás a considerar. "
+                            "Default: 90. Máximo: 365."
+                        )
+                    },
+                    "store_code": {
+                        "type": "string",
+                        "description": (
+                            "Código de la oficina de venta (opcional). "
+                            "Ej: 'SH01', 'ME10'. Sin valor = todas las tiendas."
+                        )
+                    },
+                    "block_type": {
+                        "type": "string",
+                        "enum": ["entrega", "factura"],
+                        "description": (
+                            "'entrega' = solo con bloqueo de entrega. "
+                            "'factura' = solo con bloqueo de facturación. "
+                            "Sin valor = ambos tipos de bloqueo."
+                        )
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "Máximo de pedidos a mostrar. Default: 30."
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_returns_summary",
+            "description": (
+                "Resumen de devoluciones de clientes: total de solicitudes, monto devuelto "
+                "y ranking de productos más devueltos. "
+                "Usar cuando pregunten: ¿cuántas devoluciones hubo? ¿qué productos se devuelven más? "
+                "¿cuánto perdemos en devoluciones? análisis de devoluciones, productos con más retornos."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "period": {
+                        "type": "string",
+                        "description": (
+                            "Período YYYY-MM (mes) o YYYY (año). "
+                            "Sin valor = año actual acumulado (YTD). "
+                            "Ej: '2026-07', '2026', '2025'."
+                        )
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "Número de productos en el ranking. Default: 15."
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_customer_contact",
+            "description": (
+                "Datos de contacto completos de un cliente: nombre, RUC/DNI, "
+                "teléfono, email y dirección. "
+                "Usar cuando pregunten: ¿cuál es el teléfono/email/dirección del cliente X? "
+                "¿cómo contacto a X? datos de contacto de un cliente. "
+                "REQUIERE el código SAP del cliente — usar search_customer_by_name primero si no se tiene."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "customer_id": {
+                        "type": "string",
+                        "description": (
+                            "Código SAP del cliente (7-10 dígitos). "
+                            "Obtenerlo con search_customer_by_name si el usuario da un nombre."
+                        )
+                    },
+                },
+                "required": ["customer_id"],
+            },
+        },
+    },
 ]
 
 # Set de nombres válidos (para validación rápida)
