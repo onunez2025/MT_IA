@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 from connectors.sql_connector import azure_sql
+from tools.utils import NETO_SQL
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -114,7 +115,7 @@ async def generate_forecast_report(year: int = 2026,
         SELECT TOP 15
             VC_solicitante_codigo AS codigo,
             MAX(VC_solicitante_razon_social) AS nombre,
-            SUM(DE_neto) AS ventas,
+            SUM({NETO_SQL}) AS ventas,
             COUNT(DISTINCT VC_documento_pago_numero) AS pedidos
         FROM SAP.SD_VENTAS
         WHERE IN_anio = {year}

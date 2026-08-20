@@ -5,7 +5,7 @@ from datetime import datetime
 
 from connectors.sql_connector import azure_sql
 from tools.schemas import SalesSummaryParams, SalesTargetParams, SalesForecastParams, SalesPerformanceParams
-from tools.utils import query_cache
+from tools.utils import query_cache, NETO_SQL, AVG_NETO_SQL
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +55,8 @@ async def get_sales_summary(period: str, region: Optional[str] = None) -> Dict[s
     SELECT
         COUNT(DISTINCT VC_documento_pago_numero) AS num_orders,
         COUNT(DISTINCT VC_solicitante_codigo)    AS num_customers,
-        SUM(DE_neto)                             AS total_sales,
-        AVG(DE_neto)                             AS avg_order_value
+        SUM({NETO_SQL})                          AS total_sales,
+        AVG({AVG_NETO_SQL})                      AS avg_order_value
     FROM SAP.SD_VENTAS
     {where_clause}
     """
@@ -154,7 +154,7 @@ async def get_sales_targets(vendor_id: Optional[str] = None, year: int = 2026, m
         vendor_filter = ""
 
     actual_rows = await azure_sql.query_readonly(f"""
-        SELECT SUM(DE_neto) AS actual_sales
+        SELECT SUM({NETO_SQL}) AS actual_sales
         FROM SAP.SD_VENTAS
         WHERE {period_where} {vendor_filter}
     """)
@@ -243,7 +243,7 @@ async def get_sales_performance(period: str, region: Optional[str] = None) -> Di
         VC_vendedor_codigo                                      AS vendor_code,
         VC_vendedor_nombre                                      AS vendor_name,
         COUNT(DISTINCT VC_documento_pago_numero)                AS num_orders,
-        SUM(DE_neto)                                            AS total_sales,
+        SUM({NETO_SQL})                                         AS total_sales,
         COUNT(DISTINCT VC_solicitante_codigo)                   AS num_customers
     FROM SAP.SD_VENTAS
     {where_clause}

@@ -5,6 +5,32 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+# ── Corrección de signo en SAP.SD_VENTAS ──────────────────────────────────────
+# Los créditos/cancelaciones (ZNCV, ZNCD, S1, S2) se almacenan con DE_neto
+# POSITIVO en la tabla, igual que las ventas reales. Para calcular ventas netas
+# correctas hay que invertirles el signo. Los traslados gratuitos (ZTG*) y los
+# registros legacy (F2) se excluyen (contribuyen 0).
+#
+# Uso: SUM({NETO_SQL}) AS ventas   — en lugar de SUM(DE_neto)
+#      AVG({AVG_NETO_SQL}) AS avg  — en lugar de AVG(DE_neto) para tickets promedio
+#
+_CLASES_POSITIVAS = frozenset({'ZPEF', 'ZPEB', 'ZNDV', 'ZEXP'})
+_CLASES_NEGATIVAS = frozenset({'ZNCV', 'ZNCD', 'S1', 'S2'})
+
+NETO_SQL = (
+    "CASE "
+    "WHEN VC_documento_pago_clase IN ('ZPEF','ZPEB','ZNDV','ZEXP') THEN  DE_neto "
+    "WHEN VC_documento_pago_clase IN ('ZNCV','ZNCD','S1','S2')     THEN -DE_neto "
+    "ELSE 0 END"
+)
+
+# Para AVG: solo promedia las transacciones de venta real (NULLs excluidos automáticamente)
+AVG_NETO_SQL = (
+    "CASE "
+    "WHEN VC_documento_pago_clase IN ('ZPEF','ZPEB','ZNDV','ZEXP') THEN DE_neto "
+    "END"
+)
+
 
 def aggregate_sales_data(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Pre-aggregate sales query results (SUM, COUNT, AVG).
@@ -18,7 +44,16 @@ def aggregate_sales_data(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
             "avg_order_value": 0.0
         }
 
-    total_sales = sum(float(r.get("DE_neto") or 0) for r in rows)
+    def _neto(r: Dict[str, Any]) -> float:
+        clase = (r.get("VC_documento_pago_clase") or "").upper()
+        neto  = float(r.get("DE_neto") or 0)
+        if clase in _CLASES_POSITIVAS:
+            return neto
+        if clase in _CLASES_NEGATIVAS:
+            return -neto
+        return 0.0   # ZTG* y otros excluidos
+
+    total_sales = sum(_neto(r) for r in rows)
     num_orders = len(rows)
     customer_codes = {r.get("VC_solicitante_codigo") for r in rows if r.get("VC_solicitante_codigo")}
     num_customers = len(customer_codes)

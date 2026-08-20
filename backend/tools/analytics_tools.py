@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime, date
 
 from connectors.sql_connector import azure_sql
-from tools.utils import query_cache
+from tools.utils import query_cache, NETO_SQL
 from tools.material_utils import build_material_exclusion_clause
 
 logger = logging.getLogger(__name__)
@@ -64,7 +64,7 @@ async def get_gap_to_target(vendor_id: Optional[str] = None,
             vendor_filter = f"AND VC_vendedor_codigo IN ('{ids}')"
 
     actual_rows = await azure_sql.query_readonly(f"""
-        SELECT SUM(DE_neto) AS actual
+        SELECT SUM({NETO_SQL}) AS actual
         FROM SAP.SD_VENTAS
         WHERE IN_anio = {year} AND IN_mes = {month} {vendor_filter}
     """)
@@ -131,7 +131,7 @@ async def get_inactive_customers(days: int = 60,
             MAX(DT_documento_pago_fecha)                        AS ultima_compra,
             DATEDIFF(day, MAX(DT_documento_pago_fecha), GETDATE()) AS dias_inactivo,
             COUNT(DISTINCT VC_documento_pago_numero)            AS total_pedidos_historicos,
-            SUM(DE_neto)                                        AS total_historico
+            SUM({NETO_SQL})                                     AS total_historico
         FROM SAP.SD_VENTAS
         {where_clause}
         GROUP BY VC_solicitante_codigo
@@ -340,7 +340,10 @@ async def get_new_customers(period: str,
             v.VC_solicitante_codigo          AS codigo,
             MAX(v.VC_solicitante_razon_social) AS nombre,
             MIN(v.DT_documento_pago_fecha)   AS primera_compra,
-            SUM(v.DE_neto)                   AS compra_inicial,
+            SUM(CASE
+                WHEN v.VC_documento_pago_clase IN ('ZPEF','ZPEB','ZNDV','ZEXP') THEN  v.DE_neto
+                WHEN v.VC_documento_pago_clase IN ('ZNCV','ZNCD','S1','S2')     THEN -v.DE_neto
+                ELSE 0 END)                  AS compra_inicial,
             COUNT(DISTINCT v.VC_documento_pago_numero) AS pedidos
         FROM SAP.SD_VENTAS v
         INNER JOIN (
@@ -620,7 +623,7 @@ async def get_vendor_performance_vs_target(
         SELECT TOP {top_n}
             VC_vendedor_codigo   AS codigo,
             MAX(VC_vendedor_nombre) AS nombre,
-            SUM(DE_neto)         AS ventas,
+            SUM({NETO_SQL})      AS ventas,
             COUNT(DISTINCT VC_documento_pago_numero) AS pedidos,
             COUNT(DISTINCT VC_solicitante_codigo)    AS clientes
         FROM SAP.SD_VENTAS
@@ -634,7 +637,7 @@ async def get_vendor_performance_vs_target(
 
     # ── 3. Share histórico del mes anterior para distribuir la meta ──────────
     prev_rows = await azure_sql.query_readonly(f"""
-        SELECT VC_vendedor_codigo AS codigo, SUM(DE_neto) AS ventas_prev
+        SELECT VC_vendedor_codigo AS codigo, SUM({NETO_SQL}) AS ventas_prev
         FROM SAP.SD_VENTAS
         WHERE IN_anio = {prev_year} AND IN_mes = {prev_month}
           AND VC_vendedor_codigo IS NOT NULL

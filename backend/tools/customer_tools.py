@@ -6,7 +6,7 @@ from datetime import datetime
 from connectors.sql_connector import azure_sql
 from connectors.c4c_connector import c4c
 from tools.schemas import CustomerInsightsParams
-from tools.utils import query_cache
+from tools.utils import query_cache, NETO_SQL, AVG_NETO_SQL
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ async def _query_clients(where: str, top: int) -> list:
             VC_solicitante_codigo                       AS codigo,
             MAX(VC_solicitante_razon_social)            AS razon_social,
             MAX(VC_solicitante_identificacion_numero)   AS doc_identidad,
-            SUM(DE_neto)                                AS total_compras,
+            SUM({NETO_SQL})                             AS total_compras,
             COUNT(DISTINCT VC_documento_pago_numero)    AS pedidos,
             MAX(DT_documento_pago_fecha)                AS ultima_compra
         FROM SAP.SD_VENTAS
@@ -202,9 +202,9 @@ async def get_customer_insights(customer_id: str) -> Dict[str, Any]:
     SELECT
         MAX(VC_solicitante_razon_social)         AS razon_social,
         COUNT(DISTINCT VC_documento_pago_numero) AS num_transactions,
-        SUM(DE_neto)                             AS total_spent,
+        SUM({NETO_SQL})                          AS total_spent,
         MAX(DT_documento_pago_fecha)             AS last_purchase_date,
-        AVG(DE_neto)                             AS avg_transaction_value,
+        AVG({AVG_NETO_SQL})                      AS avg_transaction_value,
         MIN(DT_documento_pago_fecha)             AS first_purchase_date
     FROM SAP.SD_VENTAS
     WHERE VC_solicitante_codigo = '{sql_safe_id}'
