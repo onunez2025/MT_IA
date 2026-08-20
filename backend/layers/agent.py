@@ -15,6 +15,7 @@ Diferencia vs arquitectura anterior:
 Soporta hasta MAX_ROUNDS rondas de tool calls por request (guarda contra loops).
 """
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
@@ -24,11 +25,18 @@ from typing import Any, Dict, List, Optional
 from openai import AsyncOpenAI
 
 from config import settings
+from tools.utils import SimpleCache
 
 logger = logging.getLogger(__name__)
 
 MAX_ROUNDS = 7          # Máximo de rondas de tool-calls por request
 LLM_TIMEOUT = 45.0      # Segundos por llamada a DeepSeek (generosa: puede tener que sintetizar mucho)
+
+# Caché de resultados de tools (15 min TTL).
+# Evita re-ejecutar las mismas queries SQL cuando se repite la misma pregunta.
+# Tools excluidas: generate_forecast_report (genera un archivo nuevo cada vez).
+_TOOL_CACHE = SimpleCache(ttl_seconds=900)
+_NO_CACHE_TOOLS = {"generate_forecast_report"}
 
 # ── Lazy client ────────────────────────────────────────────────────────────────
 
@@ -580,7 +588,7 @@ async def run_agent(
                 tools=available_schemas or None,
                 tool_choice="auto",
                 temperature=0.3,
-                max_tokens=2000,
+                max_tokens=1500,
             )
         except Exception as exc:
             logger.error(f"[Agent] DeepSeek API error on round {round_num + 1}: {exc}")
@@ -602,47 +610,54 @@ async def run_agent(
             # Adjuntar el mensaje del assistant (con sus tool_calls) al historial
             messages.append(choice.message)
 
+            # Parsear todos los tool calls primero
+            parsed: List[tuple] = []
             for tc in tool_calls:
-                fn_name = tc.function.name
-
-                # Parsear argumentos
                 try:
                     fn_args = json.loads(tc.function.arguments or "{}")
                 except json.JSONDecodeError:
                     fn_args = {}
+                parsed.append((tc, tc.function.name, fn_args))
+                logger.info(f"[Agent] → Tool call: {tc.function.name}({fn_args})")
 
-                logger.info(f"[Agent] → Tool call: {fn_name}({fn_args})")
-
-                # Ejecutar la herramienta
+            # Ejecutar todas las herramientas EN PARALELO con asyncio.gather
+            async def _run_tool(tc, fn_name: str, fn_args: dict) -> tuple:
+                """Ejecuta una herramienta y devuelve (tool_call_id, result_json).
+                Usa caché de 15 min para evitar queries SQL duplicadas.
+                """
                 if fn_name not in tool_registry:
-                    tool_result_json = json.dumps(
-                        {"error": f"Herramienta '{fn_name}' no existe en el sistema."},
-                        ensure_ascii=False,
-                    )
+                    result = {"error": f"Herramienta '{fn_name}' no existe en el sistema."}
                 elif allowed_tools is not None and fn_name not in allowed_tools:
-                    tool_result_json = json.dumps(
-                        {"error": f"Sin permiso para acceder a '{fn_name}'."},
-                        ensure_ascii=False,
-                    )
+                    result = {"error": f"Sin permiso para acceder a '{fn_name}'."}
                 else:
-                    try:
-                        tool_fn = tool_registry[fn_name]
-                        raw_result = await tool_fn(**fn_args)
-                        tools_called.append(fn_name)
-                        tool_result_json = json.dumps(raw_result, ensure_ascii=False, default=str)
-                        logger.debug(f"[Agent] ← {fn_name} returned {len(tool_result_json)} chars")
-                    except Exception as tool_exc:
-                        logger.error(f"[Agent] Tool {fn_name} raised: {tool_exc}")
-                        tool_result_json = json.dumps(
-                            {"error": f"Error al ejecutar {fn_name}: {tool_exc}"},
-                            ensure_ascii=False,
-                        )
+                    # Intentar caché (excepto tools que no deben cachearse)
+                    cache_key = f"{fn_name}:{json.dumps(fn_args, sort_keys=True, default=str)}"
+                    cached_result = None if fn_name in _NO_CACHE_TOOLS else _TOOL_CACHE.get(cache_key)
 
-                # Agregar resultado al historial como mensaje "tool"
+                    if cached_result is not None:
+                        logger.info(f"[Agent] ← {fn_name} (caché hit)")
+                        tools_called.append(fn_name)
+                        result = cached_result
+                    else:
+                        try:
+                            raw = await tool_registry[fn_name](**fn_args)
+                            tools_called.append(fn_name)
+                            logger.debug(f"[Agent] ← {fn_name} OK")
+                            if fn_name not in _NO_CACHE_TOOLS:
+                                _TOOL_CACHE.set(cache_key, raw)
+                            result = raw
+                        except Exception as exc:
+                            logger.error(f"[Agent] Tool {fn_name} raised: {exc}")
+                            result = {"error": f"Error al ejecutar {fn_name}: {exc}"}
+                return tc.id, json.dumps(result, ensure_ascii=False, default=str)
+
+            results = await asyncio.gather(*[_run_tool(tc, fn, args) for tc, fn, args in parsed])
+
+            for tool_call_id, result_json in results:
                 messages.append({
                     "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": tool_result_json,
+                    "tool_call_id": tool_call_id,
+                    "content": result_json,
                 })
 
             # Continuar loop — en la siguiente ronda DeepSeek sintetiza con los datos
