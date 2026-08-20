@@ -36,6 +36,7 @@ from tools.analytics_tools import (
     get_new_customers,
     get_top_margin_products,
     get_product_sales_ranking,
+    get_vendor_performance_vs_target,
 )
 from tools.report_tools import generate_forecast_report
 from tools.store_tools import get_sales_by_store, get_store_detail
@@ -81,8 +82,9 @@ TOOL_REGISTRY: Dict[str, Any] = {
     "get_monthly_trend":          get_monthly_trend,
     "get_new_customers":          get_new_customers,
     "get_top_margin_products":    get_top_margin_products,
-    "get_product_sales_ranking":  get_product_sales_ranking,
-    "generate_forecast_report":   generate_forecast_report,
+    "get_product_sales_ranking":          get_product_sales_ranking,
+    "get_vendor_performance_vs_target":   get_vendor_performance_vs_target,
+    "generate_forecast_report":           generate_forecast_report,
     # Tiendas/Oficinas de venta
     "get_sales_by_store":         get_sales_by_store,
     "get_store_detail":           get_store_detail,

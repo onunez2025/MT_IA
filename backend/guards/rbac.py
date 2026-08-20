@@ -33,6 +33,7 @@ _JEFE_TOOLS = _VENDEDOR_TOOLS + [
     "get_monthly_trend",
     "get_top_margin_products",
     "get_product_sales_ranking",
+    "get_vendor_performance_vs_target",
     "generate_forecast_report",
     # Herramientas de tienda/oficina de venta
     "get_sales_by_store",

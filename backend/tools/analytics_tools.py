@@ -544,3 +544,140 @@ async def get_top_margin_products(period: Optional[str] = None,
         ],
         "timestamp": datetime.utcnow().isoformat(),
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 8. get_vendor_performance_vs_target — Cumplimiento por vendedor
+# ─────────────────────────────────────────────────────────────────────────────
+async def get_vendor_performance_vs_target(
+    year: int = 2026,
+    month: Optional[int] = None,
+    store_id: Optional[str] = None,
+    top_n: int = 20,
+) -> Dict[str, Any]:
+    """
+    Cumplimiento de ventas por vendedor: ventas reales vs meta estimada.
+
+    ⚠️ Las metas individuales no existen en el sistema — se estiman distribuyendo
+    la meta de tienda proporcionalmente al share histórico de cada vendedor
+    (ventas del mes anterior). Si no hay datos del mes anterior, se distribuye
+    en partes iguales entre todos los vendedores activos del período.
+
+    Fuentes:
+      - MT.TB_FOLLOWUP_METAS + MT.TB_FOLLOWUP_VENDEDORES (meta de tienda)
+      - SAP.SD_VENTAS (ventas reales + share histórico mes anterior)
+
+    Args:
+        year:     Año. Default: 2026.
+        month:    Mes (1-12). Default: mes actual.
+        store_id: Código de tienda (ej: 'SH22'). Default: SH22.
+        top_n:    Número máximo de vendedores. Default: 20.
+    """
+    from calendar import monthrange
+
+    now = datetime.now()
+    if month is None:
+        month = now.month
+
+    top_n = max(1, min(int(top_n), 50))
+    period_ym  = f"{year}{month:02d}"
+    period_str = f"{year}-{month:02d}"
+
+    # Mes anterior (share histórico para distribuir la meta)
+    prev_month = month - 1 if month > 1 else 12
+    prev_year  = year if month > 1 else year - 1
+
+    # ── 1. Meta de tienda ────────────────────────────────────────────────────
+    sid = (store_id or "SH22").replace("'", "''")
+
+    meta_rows = await azure_sql.query_readonly(f"""
+        SELECT MAX(amount) AS meta
+        FROM MT.TB_FOLLOWUP_METAS
+        WHERE store_id = '{sid}' AND LEFT(date, 6) = '{period_ym}'
+    """)
+    meta_tienda = float(meta_rows[0].get("meta") or 0) if meta_rows else 0.0
+
+    # ── 2. Ventas reales del período ─────────────────────────────────────────
+    actual_rows = await azure_sql.query_readonly(f"""
+        SELECT TOP {top_n}
+            VC_vendedor_codigo   AS codigo,
+            MAX(VC_vendedor_nombre) AS nombre,
+            SUM(DE_neto)         AS ventas,
+            COUNT(DISTINCT VC_documento_pago_numero) AS pedidos,
+            COUNT(DISTINCT VC_solicitante_codigo)    AS clientes
+        FROM SAP.SD_VENTAS
+        WHERE IN_anio = {year} AND IN_mes = {month}
+          AND VC_vendedor_codigo IS NOT NULL
+        GROUP BY VC_vendedor_codigo
+        ORDER BY ventas DESC
+    """)
+
+    total_actual = sum(float(r.get("ventas") or 0) for r in actual_rows)
+
+    # ── 3. Share histórico del mes anterior para distribuir meta ─────────────
+    prev_rows = await azure_sql.query_readonly(f"""
+        SELECT VC_vendedor_codigo AS codigo, SUM(DE_neto) AS ventas_prev
+        FROM SAP.SD_VENTAS
+        WHERE IN_anio = {prev_year} AND IN_mes = {prev_month}
+          AND VC_vendedor_codigo IS NOT NULL
+        GROUP BY VC_vendedor_codigo
+    """)
+    prev_map  = {r["codigo"]: float(r.get("ventas_prev") or 0) for r in prev_rows}
+    total_prev = sum(prev_map.values()) or 0
+
+    n_activos = max(len(actual_rows), 1)
+
+    def _meta_estimada(codigo: str) -> float:
+        if meta_tienda <= 0:
+            return 0.0
+        if total_prev > 0:
+            share = prev_map.get(codigo, 0) / total_prev
+        else:
+            share = 1.0 / n_activos   # distribución igualitaria si no hay histórico
+        return meta_tienda * share
+
+    # ── 4. Armar resultado por vendedor ──────────────────────────────────────
+    vendedores = []
+    for r in actual_rows:
+        codigo = r.get("codigo") or ""
+        ventas = float(r.get("ventas") or 0)
+        meta_v = _meta_estimada(codigo)
+        cumpl  = round(ventas / meta_v * 100, 1) if meta_v > 0 else None
+        gap    = round(meta_v - ventas, 2) if meta_v > 0 else None   # (+) falta, (-) excedió
+
+        vendedores.append({
+            "vendedor_codigo":  codigo,
+            "vendedor_nombre":  (r.get("nombre") or "").strip(),
+            "ventas_actuales":  round(ventas, 2),
+            "meta_estimada":    round(meta_v, 2),
+            "cumplimiento_pct": cumpl,
+            "gap_soles":        gap,
+            "en_meta":          (cumpl or 0) >= 100,
+            "pedidos":          int(r.get("pedidos") or 0),
+            "clientes":         int(r.get("clientes") or 0),
+        })
+
+    # ── 5. Proyección de cierre del mes ──────────────────────────────────────
+    dias_mes       = monthrange(year, month)[1]
+    dias_hoy       = now.day if (year == now.year and month == now.month) else dias_mes
+    dias_restantes = max(0, dias_mes - dias_hoy)
+    ritmo_diario   = total_actual / max(dias_hoy, 1)
+    proyeccion     = total_actual + ritmo_diario * dias_restantes
+
+    return {
+        "period":                  period_str,
+        "store_id":                store_id or "SH22",
+        "meta_tienda_total":       round(meta_tienda, 2),
+        "ventas_reales_total":     round(total_actual, 2),
+        "cumplimiento_tienda_pct": round(total_actual / meta_tienda * 100, 1) if meta_tienda > 0 else None,
+        "proyeccion_cierre_mes":   round(proyeccion, 2),
+        "dias_restantes":          dias_restantes,
+        "share_base":              f"{prev_year}-{prev_month:02d}",
+        "nota_metodologia": (
+            "⚠️ Metas individuales ESTIMADAS: la meta de tienda se distribuyó "
+            f"según el share de ventas de {prev_year}-{prev_month:02d}. "
+            "No son cuotas oficiales asignadas por el área comercial."
+        ),
+        "vendedores": vendedores,
+        "timestamp":  datetime.utcnow().isoformat(),
+    }

@@ -612,6 +612,42 @@ TOOL_SCHEMAS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_vendor_performance_vs_target",
+            "description": (
+                "Cumplimiento de ventas por vendedor: ventas reales vs meta estimada del mes. "
+                "Calcula % de cumplimiento, gap en soles y proyección de cierre. "
+                "Las metas individuales se estiman distribuyendo la meta de tienda "
+                "según el share histórico del mes anterior. "
+                "Usar cuando pregunten: ¿cómo van los vendedores vs su meta? "
+                "¿qué vendedor está cumpliendo? ranking de cumplimiento, forecast por vendedor, "
+                "quién está por debajo de la meta, desempeño individual vs objetivo."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "year": {
+                        "type": "integer",
+                        "description": "Año. Default: 2026."
+                    },
+                    "month": {
+                        "type": "integer",
+                        "description": "Mes (1-12). Default: mes actual."
+                    },
+                    "store_id": {
+                        "type": "string",
+                        "description": "Código de tienda (opcional). Ej: 'SH22'."
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "Número de vendedores a mostrar. Default: 20."
+                    },
+                },
+            },
+        },
+    },
     # ── Fase 0.6 — 8 quick wins ───────────────────────────────────────────────
     {
         "type": "function",
@@ -1114,7 +1150,8 @@ _TOOL_STATUS: Dict[str, str] = {
     "get_sales_by_channel":      "📢 Consultando ventas por canal...",
     "get_sales_by_store":        "🏪 Consultando ventas por tienda...",
     "get_store_detail":          "🏪 Consultando detalle de tienda...",
-    "generate_forecast_report":  "📊 Generando reporte de forecast...",
+    "get_vendor_performance_vs_target": "📊 Calculando cumplimiento por vendedor...",
+    "generate_forecast_report":         "📊 Generando reporte de forecast...",
 }
 
 
