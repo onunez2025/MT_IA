@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MT.IA - Plataforma Inteligente</title>
+  
+  <!-- Fuentes e Iconos -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Markdown & Syntax Highlighting -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+  
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="dark-theme">
+  <div class="app-container">
+    
+    <!-- Sidebar de Historial y Configuración -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <button class="new-chat-btn" id="newChatBtn">
+          <i class="fa-solid fa-plus"></i>
+          <span>Nuevo chat</span>
+        </button>
+        <button class="icon-btn sidebar-toggle-btn" id="closeSidebarBtn" title="Contraer menú">
+          <i class="fa-solid fa-sidebar"></i>
+        </button>
+      </div>
+
+      <div class="chat-history-section">
+        <div class="history-label">Historial de Conversaciones</div>
+        <div class="chat-list" id="chatList">
+          <!-- Se cargan dinámicamente -->
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="model-select-wrapper">
+          <label for="modelSelect"><i class="fa-solid fa-cpu"></i> Modelo LLM:</label>
+          <select id="modelSelect" class="model-select">
+            <option value="llama3.5:3b" selected>llama3.5:3b</option>
+          </select>
+        </div>
+
+        <div class="status-indicator-card" id="statusCard">
+          <div class="status-dot online"></div>
+          <div class="status-info">
+            <span class="status-title">Servidor Ollama</span>
+            <span class="status-sub" id="statusText">192.168.42.21:11434</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Overlay móvil -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- Área Principal de Chat -->
+    <main class="main-content">
+      <!-- Header Superior -->
+      <header class="top-header">
+        <div class="header-left">
+          <button class="icon-btn mobile-menu-btn" id="openSidebarBtn">
+            <i class="fa-solid fa-bars"></i>
+          </button>
+          <div class="current-model-badge">
+            <i class="fa-solid fa-bolt"></i>
+            <span id="activeModelName">llama3.5:3b</span>
+          </div>
+        </div>
+        <div class="header-right">
+          <button class="icon-btn" id="clearHistoryBtn" title="Borrar chats">
+            <i class="fa-regular fa-trash-can"></i>
+          </button>
+        </div>
+      </header>
+
+      <!-- Pantalla de Bienvenida (se oculta al chatear) -->
+      <div class="welcome-container" id="welcomeContainer">
+        <div class="logo-badge">
+          <i class="fa-solid fa-brain"></i>
+        </div>
+        <h1>¿En qué puedo ayudarte hoy?</h1>
+        <p class="welcome-sub">Plataforma de Inteligencia Artificial MT.IA potenciada por Llama 3.5 en tu red local.</p>
+
+        <div class="suggestions-grid">
+          <div class="suggestion-card" data-prompt="Escribe una función en Python para procesar datos en paralelo y explica cómo funciona.">
+            <div class="card-icon"><i class="fa-solid fa-code"></i></div>
+            <div class="card-title">Escribir Código</div>
+            <div class="card-desc">Función en Python para procesar datos en paralelo.</div>
+          </div>
+
+          <div class="suggestion-card" data-prompt="Redacta un correo profesional solicitando una reunión de seguimiento de proyecto.">
+            <div class="card-icon"><i class="fa-solid fa-envelope"></i></div>
+            <div class="card-title">Redactar Correo</div>
+            <div class="card-desc">Mensaje profesional para coordinar reunión de trabajo.</div>
+          </div>
+
+          <div class="suggestion-card" data-prompt="Explícame qué son los LLM y cómo funcionan de manera sencilla y clara.">
+            <div class="card-icon"><i class="fa-solid fa-lightbulb"></i></div>
+            <div class="card-title">Explicar Conceptos</div>
+            <div class="card-desc">¿Qué es un LLM y cómo procesa el lenguaje natural?</div>
+          </div>
+
+          <div class="suggestion-card" data-prompt="Crea una consulta SQL compleja con JOIN y GROUP BY para analizar ventas por mes.">
+            <div class="card-icon"><i class="fa-solid fa-database"></i></div>
+            <div class="card-title">Consulta SQL</div>
+            <div class="card-desc">Query relacional para reportes de ventas mensuales.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feed del Chat -->
+      <div class="chat-feed" id="chatFeed" style="display: none;">
+        <div class="messages-container" id="messagesContainer">
+          <!-- Mensajes dinámicos -->
+        </div>
+      </div>
+
+      <!-- Barra Inferior de Entrada (Prompt Input) -->
+      <div class="input-container-wrapper">
+        <div class="input-box">
+          <textarea id="promptInput" placeholder="Envía un mensaje a MT.IA..." rows="1"></textarea>
+          
+          <div class="input-actions">
+            <span class="token-hint">Enter para enviar, Shift + Enter para salto de línea</span>
+            <button class="send-btn" id="sendBtn" disabled title="Enviar mensaje">
+              <i class="fa-solid fa-arrow-up"></i>
+            </button>
+            <button class="stop-btn" id="stopBtn" style="display: none;" title="Detener generación">
+              <i class="fa-solid fa-square"></i>
+            </button>
+          </div>
+        </div>
+        <div class="disclaimer-text">
+          MT.IA puede cometer errores. Verifica la información importante.
+        </div>
+      </div>
+    </main>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

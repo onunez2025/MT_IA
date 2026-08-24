@@ -1,0 +1,161 @@
+{
+	"info": {
+		"_postman_id": "4b9777de-9856-425b-8f19-b5bf838adcf0",
+		"name": "Ollama Secure Enterprise API",
+		"description": "Collection to test the secure Ollama API via Nginx and Cloudflare Tunnel.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "List Local Models",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "x-api-key",
+						"value": "bcb7da9e-cd11-4bb3-9224-f6e2842b5228",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "https://handed-institution-xml-resolutions.trycloudflare.com/api/tags",
+					"protocol": "https",
+					"host": [
+						"handed-institution-xml-resolutions",
+						"trycloudflare",
+						"com"
+					],
+					"path": [
+						"api",
+						"tags"
+					]
+				},
+				"description": "Gets all downloaded models available in Ollama."
+			},
+			"response": []
+		},
+		{
+			"name": "Generate Completion (Llama 3.2)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "x-api-key",
+						"value": "bcb7da9e-cd11-4bb3-9224-f6e2842b5228",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"model\": \"llama3.2:3b\",\n  \"prompt\": \"¿Cuáles son las 3 mejores prácticas para seguridad en APIs empresariales?\",\n  \"stream\": false\n}"
+				},
+				"url": {
+					"raw": "https://handed-institution-xml-resolutions.trycloudflare.com/api/generate",
+					"protocol": "https",
+					"host": [
+						"handed-institution-xml-resolutions",
+						"trycloudflare",
+						"com"
+					],
+					"path": [
+						"api",
+						"generate"
+					]
+				},
+				"description": "Generates a response for a prompt using a specific model (llama3.2:3b)."
+			},
+			"response": []
+		},
+		{
+			"name": "Chat Completion (Gemma 3)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "x-api-key",
+						"value": "bcb7da9e-cd11-4bb3-9224-f6e2842b5228",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"model\": \"gemma3:4b\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Eres un asistente experto en seguridad informática de MT Industrial. Habla de forma formal.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Hola, ¿cómo aseguro mi conexión local de base de datos?\"\n    }\n  ],\n  \"stream\": false\n}"
+				},
+				"url": {
+					"raw": "https://handed-institution-xml-resolutions.trycloudflare.com/api/chat",
+					"protocol": "https",
+					"host": [
+						"handed-institution-xml-resolutions",
+						"trycloudflare",
+						"com"
+					],
+					"path": [
+						"api",
+						"chat"
+					]
+				},
+				"description": "Starts a chat conversation with message history."
+			},
+			"response": []
+		},
+		{
+			"name": "Generate Embeddings",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "x-api-key",
+						"value": "bcb7da9e-cd11-4bb3-9224-f6e2842b5228",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"model\": \"llama3.2:3b\",\n  \"prompt\": \"MT Industrial S.A.C.\"\n}"
+				},
+				"url": {
+					"raw": "https://handed-institution-xml-resolutions.trycloudflare.com/api/embeddings",
+					"protocol": "https",
+					"host": [
+						"handed-institution-xml-resolutions",
+						"trycloudflare",
+						"com"
+					],
+					"path": [
+						"api",
+						"embeddings"
+					]
+				},
+				"description": "Generates vector embeddings for a given text."
+			},
+			"response": []
+		}
+	],
+	"variable": [
+		{
+			"key": "tunnel_url",
+			"value": "https://handed-institution-xml-resolutions.trycloudflare.com",
+			"type": "string"
+		},
+		{
+			"key": "api_key",
+			"value": "bcb7da9e-cd11-4bb3-9224-f6e2842b5228",
+			"type": "string"
+		}
+	]
+}
