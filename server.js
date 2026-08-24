@@ -18,6 +18,11 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/favicon.ico', (req, res) => res.status(204).end());
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', service: 'MT.IA OpenAI-Compatible API', timestamp: new Date().toISOString() });
+});
+
 // Helper: Detectar el proveedor basado en el nombre del modelo
 function getProvider(modelName) {
   if (modelName && modelName.toLowerCase().includes('deepseek')) {
