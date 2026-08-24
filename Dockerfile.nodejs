@@ -1,4 +1,4 @@
-# Node.js OpenAI-Compatible API Server
+# Node.js OpenAI-Compatible API Server for OpenAI-compatible endpoints
 FROM node:20-slim
 
 WORKDIR /app
@@ -11,8 +11,6 @@ RUN npm ci --only=production
 
 # Copy application files
 COPY server.js .
-COPY public/ ./public/
-COPY ollama_postman_collection.json .
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash appuser && \
