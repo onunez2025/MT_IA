@@ -1,0 +1,13 @@
+{
+  "name": "mt-ia-chatgpt-platform",
+  "version": "1.0.0",
+  "description": "Plataforma de Inteligencia Artificial tipo ChatGPT conectada a Ollama local",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
