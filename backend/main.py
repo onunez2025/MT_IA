@@ -13,6 +13,7 @@ from models.user import User
 from layers.orchestrator import Orchestrator
 from connectors.entra_connector import EntraConnector
 from api.openai_compat import router as openai_router
+from api.reports import router as reports_router
 import logging
 
 logging.basicConfig(level=settings.log_level)
@@ -26,6 +27,9 @@ app = FastAPI(
 
 # Endpoints compatibles con OpenAI (para Open WebUI y otros clientes)
 app.include_router(openai_router)
+
+# Endpoints de reportes y análisis (Fase 1)
+app.include_router(reports_router)
 
 orchestrator = Orchestrator()
 entra = EntraConnector()
