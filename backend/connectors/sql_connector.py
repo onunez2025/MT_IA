@@ -29,18 +29,29 @@ class SQLConnector(BaseConnector):
                 f"Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
             )
         elif db_type == "punto_venta":
-            # PUNTO_VENTA: usa PV_SQL_* si están configurados,
-            # si no, cae al mismo server/user que SQL local.
-            server = settings.pv_sql_server or settings.sql_server
-            user   = settings.pv_sql_user   or settings.sql_user
-            pwd    = settings.pv_sql_password or settings.sql_password
-            # Detectar si es Azure SQL para usar SSL correcto
+            # PUNTO_VENTA: prioridad de credenciales:
+            #   1. PV_SQL_* explícitas
+            #   2. Fallback a Azure SQL (cuando toda la data está en soledb-puntoventa)
+            #   3. Fallback a SQL local (SIG) — entornos on-premise
+            server = (settings.pv_sql_server
+                      or settings.azure_sql_server
+                      or settings.sql_server)
+            user   = (settings.pv_sql_user
+                      or settings.azure_sql_user
+                      or settings.sql_user)
+            pwd    = (settings.pv_sql_password
+                      or settings.azure_sql_password
+                      or settings.sql_password)
+            # La base de datos PV puede ser la misma Azure o una local distinta
+            database = settings.pv_sql_database or settings.azure_sql_database
+
+            # Detectar Azure SQL para usar SSL correcto
             is_azure = "database.windows.net" in (server or "")
             if is_azure:
                 self.connection_string = (
                     f"Driver={{ODBC Driver 18 for SQL Server}};"
                     f"Server=tcp:{server},1433;"
-                    f"Database={settings.pv_sql_database};"
+                    f"Database={database};"
                     f"UID={user};"
                     f"PWD={pwd};"
                     f"Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
@@ -49,7 +60,7 @@ class SQLConnector(BaseConnector):
                 self.connection_string = (
                     f"Driver={{ODBC Driver 18 for SQL Server}};"
                     f"Server={server};"
-                    f"Database={settings.pv_sql_database};"
+                    f"Database={database};"
                     f"UID={user};"
                     f"PWD={pwd};"
                     f"TrustServerCertificate=yes;Connection Timeout=30;"
