@@ -518,40 +518,31 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "get_pending_orders",
             "description": (
-                "Lista pedidos bloqueados (con bloqueo de entrega o de facturación). "
-                "Muestra número de pedido, fecha, tipo de bloqueo, valor neto y tienda. "
-                "Usar cuando pregunten: ¿qué pedidos están bloqueados? ¿hay pedidos pendientes? "
-                "¿cuánto valor tenemos en pedidos bloqueados? pedidos sin entregar, pedidos retenidos."
+                "Lista entregas pendientes de SAP: sin movimiento de mercancía registrado (VC_estado=0). "
+                "Muestra total de entregas, posiciones y unidades pendientes de despacho. "
+                "Usar cuando pregunten: ¿cuántas entregas pendientes hay? ¿qué entregas faltan despachar? "
+                "¿cuántos pedidos no se han entregado? entregas vencidas, entregas del mes, despachos pendientes."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "days": {
-                        "type": "integer",
+                    "period": {
+                        "type": "string",
                         "description": (
-                            "Número de días hacia atrás a considerar. "
-                            "Default: 90. Máximo: 365."
+                            "Período a consultar: YYYY-MM (mes) o YYYY (año). "
+                            "Ej: '2026-08'. Sin valor = mes actual."
                         )
                     },
                     "store_code": {
                         "type": "string",
                         "description": (
-                            "Código de la oficina de venta (opcional). "
-                            "Ej: 'SH01', 'ME10'. Sin valor = todas las tiendas."
-                        )
-                    },
-                    "block_type": {
-                        "type": "string",
-                        "enum": ["entrega", "factura"],
-                        "description": (
-                            "'entrega' = solo con bloqueo de entrega. "
-                            "'factura' = solo con bloqueo de facturación. "
-                            "Sin valor = ambos tipos de bloqueo."
+                            "Código de organización de venta SAP (opcional). "
+                            "Ej: '1301', '1302'. Sin valor = todas las organizaciones."
                         )
                     },
                     "top_n": {
                         "type": "integer",
-                        "description": "Máximo de pedidos a mostrar. Default: 30."
+                        "description": "Máximo de entregas a listar en detalle. Default: 30."
                     },
                 },
             },
@@ -1307,7 +1298,7 @@ _TOOL_STATUS: Dict[str, str] = {
     "get_inventory_value":       "📦 Consultando valorización de inventario...",
     "get_nps_summary":           "⭐ Consultando encuestas de satisfacción...",
     "get_stock_by_product":      "📦 Consultando stock del producto...",
-    "get_pending_orders":        "📋 Consultando pedidos pendientes...",
+    "get_pending_orders":        "📦 Consultando entregas pendientes de despacho...",
     "get_returns_summary":       "🔄 Consultando devoluciones...",
     "get_sales_summary":         "📊 Consultando resumen de ventas...",
     "get_sales_targets":         "🎯 Consultando metas de venta...",

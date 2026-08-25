@@ -34,14 +34,26 @@ class SQLConnector(BaseConnector):
             server = settings.pv_sql_server or settings.sql_server
             user   = settings.pv_sql_user   or settings.sql_user
             pwd    = settings.pv_sql_password or settings.sql_password
-            self.connection_string = (
-                f"Driver={{ODBC Driver 18 for SQL Server}};"
-                f"Server={server};"
-                f"Database={settings.pv_sql_database};"
-                f"UID={user};"
-                f"PWD={pwd};"
-                f"TrustServerCertificate=yes;Connection Timeout=5;"
-            )
+            # Detectar si es Azure SQL para usar SSL correcto
+            is_azure = "database.windows.net" in (server or "")
+            if is_azure:
+                self.connection_string = (
+                    f"Driver={{ODBC Driver 18 for SQL Server}};"
+                    f"Server=tcp:{server},1433;"
+                    f"Database={settings.pv_sql_database};"
+                    f"UID={user};"
+                    f"PWD={pwd};"
+                    f"Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
+                )
+            else:
+                self.connection_string = (
+                    f"Driver={{ODBC Driver 18 for SQL Server}};"
+                    f"Server={server};"
+                    f"Database={settings.pv_sql_database};"
+                    f"UID={user};"
+                    f"PWD={pwd};"
+                    f"TrustServerCertificate=yes;Connection Timeout=30;"
+                )
         else:  # local (SIG)
             self.connection_string = (
                 f"Driver={{ODBC Driver 18 for SQL Server}};"

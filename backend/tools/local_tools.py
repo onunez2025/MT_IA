@@ -15,7 +15,7 @@ import logging
 from datetime import datetime
 from typing import Dict, Any, Optional
 
-from connectors.sql_connector import punto_venta_sql
+from connectors.sql_connector import punto_venta_sql, azure_sql
 
 logger = logging.getLogger(__name__)
 
@@ -102,90 +102,100 @@ async def get_stock_by_product(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 2. get_pending_orders — Pedidos bloqueados
+# 2. get_pending_orders — Entregas pendientes (sin movimiento de mercancía)
 # ─────────────────────────────────────────────────────────────────────────────
 async def get_pending_orders(
-    days: int = 90,
+    period: Optional[str] = None,
     store_code: Optional[str] = None,
-    block_type: Optional[str] = None,
     top_n: int = 30,
 ) -> Dict[str, Any]:
     """
-    Lista pedidos con bloqueo de entrega o de facturación.
+    Lista entregas pendientes de SAP: sin movimiento de mercancía registrado
+    (VC_fecha_mov_mercancia_real = '00000000' o VC_estado = '0').
 
-    Usa dbo.SD_PEDIDOS. La fecha de creación está en formato YYYYMMDD (varchar).
+    Usa SAP.SD_ENTREGAS en Azure SQL. Fechas en formato YYYYMMDD (varchar).
 
     Args:
-        days:       Número de días hacia atrás a considerar. Default: 90.
-        store_code: Código de oficina de venta. Ej: 'SH01', 'ME10'.
-        block_type: 'entrega' = solo con bloqueo de entrega,
-                    'factura' = solo con bloqueo de facturación,
-                    None = ambos.
-        top_n:      Máximo de pedidos. Default: 30.
+        period:     Período YYYY-MM o YYYY. Sin valor = mes actual.
+        store_code: Código de organización de venta. Ej: '1301', '1302'.
+        top_n:      Máximo de entregas a listar. Default: 30.
     """
     top_n = max(1, min(int(top_n), 100))
-    days  = max(1, min(int(days), 365))
+    now   = datetime.now()
 
-    # Fecha límite en formato YYYYMMDD (como está almacenada la columna)
-    from datetime import timedelta
-    fecha_desde = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
-
-    where_parts = [f"VC_fecha_creacion >= '{fecha_desde}'"]
-
-    # Filtro de bloqueo
-    if block_type == "entrega":
-        where_parts.append(
-            "VC_entrega_bloqueo IS NOT NULL AND LTRIM(RTRIM(VC_entrega_bloqueo)) != ''"
-        )
-    elif block_type == "factura":
-        where_parts.append(
-            "VC_factura_bloqueo IS NOT NULL AND LTRIM(RTRIM(VC_factura_bloqueo)) != ''"
-        )
+    # Calcular rango de fechas en formato YYYYMMDD
+    if not period:
+        fecha_desde = now.strftime("%Y%m01")
+        fecha_hasta = now.strftime("%Y%m%d")
+        label       = now.strftime("%B %Y")
+    elif "-" in str(period):
+        y, m = str(period).split("-")
+        fecha_desde = f"{y}{int(m):02d}01"
+        fecha_hasta = f"{y}{int(m):02d}31"
+        label       = f"{m}/{y}"
     else:
-        where_parts.append(
-            "(VC_entrega_bloqueo IS NOT NULL AND LTRIM(RTRIM(VC_entrega_bloqueo)) != '') "
-            "OR (VC_factura_bloqueo IS NOT NULL AND LTRIM(RTRIM(VC_factura_bloqueo)) != '')"
-        )
+        fecha_desde = f"{period}0101"
+        fecha_hasta = f"{period}1231"
+        label       = str(period)
+
+    where_parts = [
+        f"VC_fecha_creacion >= '{fecha_desde}'",
+        f"VC_fecha_creacion <= '{fecha_hasta}'",
+        "VC_estado = '0'",        # sin movimiento de mercancía
+    ]
 
     if store_code:
-        safe_s = store_code.replace("'", "''").upper()
-        where_parts.append(f"VC_oficina_venta = '{safe_s}'")
+        safe_s = store_code.replace("'", "''")
+        where_parts.append(f"VC_organizacion_venta = '{safe_s}'")
 
     where_clause = "WHERE " + " AND ".join(f"({p})" for p in where_parts)
 
-    rows = await punto_venta_sql.query_readonly(f"""
-        SELECT TOP {top_n}
-            VC_pedido_numero        AS pedido,
-            VC_fecha_creacion       AS fecha_creacion,
-            VC_entrega_bloqueo      AS bloqueo_entrega,
-            VC_factura_bloqueo      AS bloqueo_factura,
-            DE_pedido_valor_neto    AS valor_neto,
-            VC_moneda               AS moneda,
-            VC_oficina_venta        AS oficina_venta,
-            VC_documento_pago_clase AS tipo_doc,
-            VC_pedido_motivo        AS motivo
-        FROM dbo.SD_PEDIDOS
+    # Resumen agregado
+    summary = await azure_sql.query_readonly(f"""
+        SELECT
+            COUNT(DISTINCT VC_entrega_numero)  AS total_entregas,
+            COUNT(*)                           AS total_posiciones,
+            SUM(DE_cantidad)                   AS total_unidades
+        FROM SAP.SD_ENTREGAS
         {where_clause}
-        ORDER BY VC_fecha_creacion DESC
     """)
 
-    total_valor = sum(float(r.get("valor_neto") or 0) for r in rows)
+    # Detalle de entregas (agrupado por numero)
+    rows = await azure_sql.query_readonly(f"""
+        SELECT TOP {top_n}
+            VC_entrega_numero           AS entrega,
+            MAX(VC_fecha_creacion)      AS fecha_creacion,
+            MAX(VC_entrega_fecha)       AS fecha_entrega_prog,
+            MAX(VC_organizacion_venta)  AS org_venta,
+            MAX(VC_oficina_venta)       AS oficina_venta,
+            COUNT(*)                    AS posiciones,
+            SUM(DE_cantidad)            AS unidades
+        FROM SAP.SD_ENTREGAS
+        {where_clause}
+        GROUP BY VC_entrega_numero
+        ORDER BY MAX(VC_fecha_creacion) DESC
+    """)
+
+    s = summary[0] if summary else {}
+    total_e  = int(s.get("total_entregas") or 0)
+    total_p  = int(s.get("total_posiciones") or 0)
+    total_u  = float(s.get("total_unidades") or 0)
 
     return {
-        "periodo_dias": days,
-        "filtro_tienda": store_code,
-        "filtro_bloqueo": block_type or "ambos",
-        "total_pedidos_bloqueados": len(rows),
-        "valor_total_bloqueado": round(total_valor, 2),
-        "pedidos": [
+        "periodo": label,
+        "filtro_organizacion": store_code,
+        "total_entregas_pendientes": total_e,
+        "total_posiciones": total_p,
+        "total_unidades": round(total_u, 2),
+        "entregas": [
             {
-                "pedido": r.get("pedido"),
+                "entrega": r.get("entrega"),
                 "fecha_creacion": str(r.get("fecha_creacion") or ""),
-                "bloqueo_entrega": (r.get("bloqueo_entrega") or "").strip() or None,
-                "bloqueo_factura": (r.get("bloqueo_factura") or "").strip() or None,
-                "valor_neto": round(float(r.get("valor_neto") or 0), 2),
-                "moneda": r.get("moneda"),
+                "fecha_entrega_programada": str(r.get("fecha_entrega_prog") or ""),
+                "org_venta": r.get("org_venta"),
                 "oficina_venta": r.get("oficina_venta"),
+                "posiciones": int(r.get("posiciones") or 0),
+                "unidades": round(float(r.get("unidades") or 0), 2),
             }
             for r in rows
         ],
